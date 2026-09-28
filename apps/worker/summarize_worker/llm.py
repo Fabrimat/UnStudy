@@ -36,8 +36,9 @@ def make_client(base_url: str, api_key: str):
     if base_url == "fake":
         return FakeClient()
     from openai import OpenAI
-    # 300 s timeout keeps a stalled stream well inside the 10-minute heartbeat window
-    return OpenAI(base_url=base_url, api_key=api_key, timeout=300)
+    # 120 s timeout keeps a stalled stream well inside the 10-minute heartbeat window;
+    # max_retries=0 because call_model already retries with its own backoff below.
+    return OpenAI(base_url=base_url, api_key=api_key, timeout=120, max_retries=0)
 
 
 def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens: int = 32000, attempts: int = 5,
@@ -45,6 +46,8 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
     """Streams one completion. on_tokens(words_written) fires about every 2 s (also while the model reasons)."""
     messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
     for attempt in range(attempts):
+        if on_tokens:
+            on_tokens(0)  # heartbeat at the start of every attempt, so a slow/failing call still heartbeats
         try:
             stream = client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens,
                                                     temperature=0.4, stream=True,

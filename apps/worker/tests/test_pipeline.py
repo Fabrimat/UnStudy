@@ -1,10 +1,30 @@
 import zipfile
 from io import BytesIO
+from types import SimpleNamespace
 
 from summarize_worker.docx import to_docx
-from summarize_worker.llm import DEFAULT_REPLY, FakeClient, Usage, make_client
+from summarize_worker.llm import DEFAULT_REPLY, FakeClient, Usage, call_model, make_client
 from summarize_worker.pipeline import summarize_chapters
 from summarize_worker.text import Chapter
+
+
+class FlakyClient:
+    """Fails `fail_times` calls, then streams one short reply. LLM stand-in for call_model's retry loop."""
+
+    def __init__(self, fail_times: int):
+        self.fail_times = fail_times
+        self.calls = 0
+        self.chat = self
+        self.completions = self
+
+    def create(self, **_):
+        self.calls += 1
+        if self.calls <= self.fail_times:
+            raise RuntimeError("LLM down")
+        return iter([
+            SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=SimpleNamespace(content="hello"), finish_reason="stop")]),
+            SimpleNamespace(usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1), choices=[]),
+        ])
 
 
 def test_each_chapter_gets_a_draft_and_a_fact_check():
@@ -36,6 +56,16 @@ def test_a_too_short_fact_check_keeps_the_draft():
 
 def test_fake_client_is_selected_by_base_url():
     assert isinstance(make_client("fake", ""), FakeClient)
+
+
+def test_call_model_heartbeats_every_attempt_and_survives_retries(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    client = FlakyClient(fail_times=2)
+    heartbeats = []
+    text = call_model(client, "m", "prompt", on_tokens=heartbeats.append)
+    assert text == "hello"
+    assert client.calls == 3
+    assert heartbeats.count(0) >= 3  # one heartbeat at the start of each of the 3 attempts
 
 
 def test_docx_has_real_headings():

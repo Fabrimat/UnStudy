@@ -45,10 +45,10 @@ def read_chapters(pdf: bytes, ocr_langs: str | None, on_page=None) -> tuple[list
     return chapters, pages_count, used_ocr
 
 
-def _page_heartbeat(conn, job_id, analyze: bool):
+def _page_heartbeat(conn, job_id, analyze: bool, attempts: int):
     # extraction with OCR can outlast the 10-minute stale window, so every page updates the heartbeat
     def on_page(i: int, n: int):
-        db.progress(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}")
+        db.progress(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}", attempts)
     return on_page
 
 
@@ -56,7 +56,7 @@ def handle_analyze(conn, storage, settings, job: dict) -> None:
     doc = db.get_document(conn, job["documentId"])
     try:
         chapters, pages, used_ocr = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
-                                                  _page_heartbeat(conn, job["id"], analyze=True))
+                                                  _page_heartbeat(conn, job["id"], analyze=True, attempts=job["attempts"]))
     except Rejected as e:
         db.reject_document(conn, job, str(e))
         return
@@ -67,7 +67,7 @@ def handle_analyze(conn, storage, settings, job: dict) -> None:
 def handle_summarize(conn, storage, settings, client, job: dict) -> None:
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
-                                   _page_heartbeat(conn, job["id"], analyze=False))
+                                   _page_heartbeat(conn, job["id"], analyze=False, attempts=job["attempts"]))
     if sum(c.words for c in chapters) != doc["words"]:
         # The object behind the presigned PUT URL was swapped after analyze priced the job: never
         # call the LLM on it, and never retry (a retry would just re-read the same swapped file).
@@ -77,8 +77,8 @@ def handle_summarize(conn, storage, settings, client, job: dict) -> None:
     markdown, warnings = summarize_chapters(
         client, settings.llm_model, chapters, render_instructions(opts["preset"], opts["language"], opts["fraction"]),
         fraction=opts["fraction"], bibliographic_line=opts.get("bibliographicLine"),
-        on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase), usage=usage)
-    db.progress(conn, job["id"], 99, "Saving")
+        on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage)
+    db.progress(conn, job["id"], 99, "Saving", job["attempts"])
     prefix = f"users/{job['userId']}/results/{job['id']}"
     storage.put(f"{prefix}.md", markdown.encode("utf-8"), "text/markdown; charset=utf-8")
     storage.put(f"{prefix}.docx", to_docx(markdown), DOCX_MIME)

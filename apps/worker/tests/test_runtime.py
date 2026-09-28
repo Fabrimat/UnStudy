@@ -164,13 +164,37 @@ def test_fresh_running_jobs_are_left_alone(conn, storage, settings):
 
 def test_every_page_is_a_heartbeat(conn, storage, settings):
     _, _, job_id = seed(conn, storage, TEXT_PDF)
-    db.claim(conn, "analyze")
+    claimed = db.claim(conn, "analyze")
     conn.execute("""UPDATE "Job" SET "heartbeatAt" = now() - interval '1 hour' WHERE id = %s""", (job_id,))
     stale_heartbeat = job(conn, job_id)["heartbeatAt"]
-    on_page = handlers._page_heartbeat(conn, job_id, analyze=True)
+    on_page = handlers._page_heartbeat(conn, job_id, analyze=True, attempts=claimed["attempts"])
     on_page(1, 3)
     row = job(conn, job_id)
     assert row["phase"] == "Reading page 1/3"
     assert row["heartbeatAt"] > stale_heartbeat
     on_page(2, 3)
     on_page(3, 3)
+
+
+def test_fencing_blocks_writes_from_a_superseded_claim(conn, storage, settings):
+    # A worker holding a claim that recover_stale already reclaimed (attempts bumped by a fresh
+    # claim) must not be able to progress/finish the job out from under the new claim (F2c).
+    _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=2)
+    old = db.claim(conn, "summarize")
+    assert old["attempts"] == 1
+    conn.execute("""UPDATE "Job" SET "heartbeatAt" = now() - interval '20 minutes' WHERE id = %s""", (job_id,))
+    assert db.recover_stale(conn) == 1
+    assert job(conn, job_id)["status"] == "queued"
+    new = db.claim(conn, "summarize")
+    assert new["attempts"] == 2
+
+    db.progress(conn, job_id, 42, "stale write", old["attempts"])
+    row = job(conn, job_id)
+    assert row["progress"] != 42 and row["phase"] != "stale write"
+
+    db.finish_summary(conn, old, md_key="old.md", docx_key="old.docx", warnings=[], input_tokens=1, output_tokens=1)
+    row = job(conn, job_id)
+    assert row["status"] == "running" and row["resultMdKey"] is None
+    charges = conn.execute("""SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s AND type = 'charge'""",
+                           (job_id,)).fetchone()
+    assert charges["n"] == 0
