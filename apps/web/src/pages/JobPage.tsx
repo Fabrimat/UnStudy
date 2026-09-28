@@ -7,6 +7,7 @@ export default function JobPage() {
   const { id } = useParams();
   const qc = useQueryClient();
   const [job, setJob] = useState<Job | null>(null);
+  const [connectionLost, setConnectionLost] = useState(false);
 
   useEffect(() => {
     const source = new EventSource(`/api/jobs/${id}/events`);
@@ -19,6 +20,9 @@ export default function JobPage() {
         qc.invalidateQueries({ queryKey: ['documents'] });
       }
     };
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) setConnectionLost(true);
+    };
     return () => source.close();
   }, [id, qc]);
 
@@ -27,7 +31,7 @@ export default function JobPage() {
     window.location.href = url;
   }
 
-  if (!job) return <p>Loading…</p>;
+  if (!job) return <p>{connectionLost ? 'Could not load progress. Reload the page or log in again.' : 'Loading…'}</p>;
   return (
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">Summary</h1>

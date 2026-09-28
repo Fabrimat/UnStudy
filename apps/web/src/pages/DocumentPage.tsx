@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError, Doc, Job, uploadFailed, useMe } from '../api';
@@ -32,6 +32,7 @@ function errorText(e: Error) {
 export default function DocumentPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const me = useMe();
   const [language, setLanguage] = useState<string>('auto');
   const [fraction, setFraction] = useState<number>(3);
@@ -51,7 +52,10 @@ export default function DocumentPage() {
           ...(bibliographicLine.trim() ? { bibliographicLine: bibliographicLine.trim() } : {}),
         }),
       }),
-    onSuccess: (job) => navigate(`/jobs/${job.id}`),
+    onSuccess: (job) => {
+      qc.invalidateQueries({ queryKey: ['me'] }); // the reservation just moved the header balance
+      navigate(`/jobs/${job.id}`);
+    },
   });
 
   if (doc.error) return <p className="text-red-600">{doc.error.message}</p>;
