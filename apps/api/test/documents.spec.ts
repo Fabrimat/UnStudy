@@ -34,6 +34,16 @@ describe('documents', () => {
     await confirm(cookie, res.body.document.id).expect(409);
   });
 
+  it('queues one analysis even when confirmed twice at once', async () => {
+    const { cookie } = await loginAs(app, 'u@x.com');
+    const res = await create(cookie, { filename: 'Reading.pdf', sizeBytes: PDF.length }).expect(201);
+    await fetch(res.body.uploadUrl, { method: 'PUT', body: PDF, headers: { 'Content-Type': 'application/pdf' } });
+    const [a, b] = await Promise.all([confirm(cookie, res.body.document.id), confirm(cookie, res.body.document.id)]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    const jobs = await prisma.job.findMany({ where: { documentId: res.body.document.id, kind: 'analyze' } });
+    expect(jobs).toHaveLength(1);
+  });
+
   it('refuses to confirm before the file is uploaded', async () => {
     const { cookie } = await loginAs(app, 'u@x.com');
     const res = await create(cookie, { filename: 'a.pdf', sizeBytes: 10 }).expect(201);

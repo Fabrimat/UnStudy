@@ -35,20 +35,30 @@ export class DocumentsService {
   }
 
   async confirmUpload(user: User, id: string) {
-    const doc = await this.findOwned(user, id);
-    const alreadyQueued = await this.prisma.job.count({ where: { documentId: id, kind: 'analyze' } });
-    if (doc.status !== 'uploaded' || alreadyQueued) throw new ConflictException('Document already submitted');
-    const head = await this.storage.head(doc.s3Key);
-    if (!head) throw new BadRequestException('File not uploaded yet');
-    if (head.size !== doc.sizeBytes || head.size > MAX_UPLOAD_BYTES) {
-      await this.prisma.document.update({
-        where: { id },
-        data: { status: 'rejected', rejectReason: 'Uploaded file does not match the declared size' },
-      });
-      throw new BadRequestException('Uploaded file does not match the declared size');
-    }
-    await this.prisma.job.create({ data: { userId: user.id, documentId: id, kind: 'analyze' } });
-    return toDocDto(doc);
+    await this.findOwned(user, id); // 404 if not the caller's document
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Lock the document row so two concurrent confirms serialize: the second one only ever
+      // observes the first's committed status/job, instead of both racing past the same checks.
+      await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${id}::uuid FOR UPDATE`;
+      const doc = await tx.document.findUniqueOrThrow({ where: { id } });
+      const alreadyQueued = await tx.job.count({ where: { documentId: id, kind: 'analyze' } });
+      if (doc.status !== 'uploaded' || alreadyQueued) throw new ConflictException('Document already submitted');
+      const head = await this.storage.head(doc.s3Key);
+      if (!head) throw new BadRequestException('File not uploaded yet');
+      if (head.size !== doc.sizeBytes || head.size > MAX_UPLOAD_BYTES) {
+        // Throwing here would roll back this update, so commit the rejection and report it to the
+        // caller, which throws only after the transaction has committed.
+        const rejected = await tx.document.update({
+          where: { id },
+          data: { status: 'rejected', rejectReason: 'Uploaded file does not match the declared size' },
+        });
+        return { rejected: true as const, doc: rejected };
+      }
+      await tx.job.create({ data: { userId: user.id, documentId: id, kind: 'analyze' } });
+      return { rejected: false as const, doc };
+    });
+    if (result.rejected) throw new BadRequestException('Uploaded file does not match the declared size');
+    return toDocDto(result.doc);
   }
 
   async list(user: User) {
