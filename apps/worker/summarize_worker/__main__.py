@@ -1,4 +1,5 @@
 """python -m summarize_worker — one thread per job kind, so a new upload is analysed while a long summary runs."""
+import contextlib
 import sys
 import threading
 import time
@@ -41,6 +42,10 @@ def run(kind: str, settings: Settings, stop: threading.Event) -> None:
             stop.wait(5)
         except Exception:
             traceback.print_exc()  # never let an unexpected error kill this thread silently
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()  # may be broken (e.g. InterfaceError, half-open socket): reconnect next loop
+            conn = None
             stop.wait(ERROR_PAUSE)
 
 
