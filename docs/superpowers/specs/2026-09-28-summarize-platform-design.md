@@ -84,7 +84,7 @@ Si parte da `riassumi_libro.py` e lo si divide in moduli; la logica resta invari
   - **Apple:** Sign in with Apple; il nome arriva solo al primo login e va salvato subito.
 - **Collegamento degli account:** un login con un'email già verificata di un `User` esistente aggiunge un `AuthAccount` allo stesso utente. Le email relay private di Apple restano utenti separati.
 - **Sessione:** cookie `sid` `httpOnly`, `Secure`, `SameSite=Lax`, valido 30 giorni. Protezione CSRF: `SameSite=Lax` più il controllo dell'header `Origin` sulle richieste che modificano dati.
-- **Rate limit** (`@nestjs/throttler`): richiesta del magic link 5/ora per email e IP; upload 30/ora per utente.
+- **Rate limit** (`@nestjs/throttler`): richiesta del magic link 5/ora per email e 30/ora per IP (più alto per gli IP condivisi dei campus); upload 30/ora per utente.
 - Ogni query su `Document` e `Job` è filtrata per `userId` della sessione; un id non proprio restituisce 404.
 
 ## 7. Stripe
@@ -122,7 +122,7 @@ UI in inglese e italiano (i18n con `react-i18next`).
 | Saldo insufficiente | 402 con il fabbisogno; la UI propone l'acquisto |
 | Errore LLM transitorio | retry con backoff dentro la pipeline (come oggi) |
 | Worker morto a metà | heartbeat scaduto: job rimesso in coda, al massimo 2 tentativi |
-| Fallimento definitivo | `failed` e `refund` nella stessa transazione, email all'utente |
+| Fallimento definitivo | `failed` e `refund` nella stessa transazione, email all'utente (rinviata al rilascio 3; nel rilascio 1 errore e rimborso si vedono nella UI) |
 | Webhook duplicato | vincolo PK su `StripeEvent`, risposta 200, nessun doppio accredito |
 | Avvisi dei controlli | salvati in `Job.warnings`, riassunto consegnato comunque |
 
@@ -138,4 +138,4 @@ Ogni rilascio ha il proprio piano di implementazione.
 
 1. **Nucleo:** monorepo, DB, auth (magic link e Google; Apple nel rilascio 3 se richiede il developer account), upload, analisi, job, avanzamento via SSE, download. I crediti si danno solo con `grant`.
 2. **Pagamenti:** Stripe Checkout, webhook, pagina di acquisto, `revoke` sui rimborsi.
-3. **Lancio:** Apple, eliminazione dell'account, lifecycle rule, pagine legali, i18n completo, deploy di produzione in UE, taratura del prezzo per credito.
+3. **Lancio:** Apple, eliminazione dell'account, lifecycle rule, pagine legali, i18n completo, deploy di produzione in UE, taratura del prezzo per credito, email di notifica sui job falliti, `pandoc --sandbox` e limite di memoria sul rendering OCR delle pagine enormi.
