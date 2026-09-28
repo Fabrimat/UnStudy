@@ -1,0 +1,8 @@
+{
+  "name": "@summarize/worker",
+  "private": true,
+  "scripts": {
+    "test": "python -m pytest -q",
+    "dev": "python -m summarize_worker"
+  }
+}
