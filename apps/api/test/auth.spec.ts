@@ -88,4 +88,10 @@ describe('magic link auth', () => {
     expect(again.id).toBe(byEmail.id);
     await expect(auth.loginWithProvider('google', 'g-999', 'new@y.com', false)).rejects.toThrow('Email not verified');
   });
+
+  it('lists login providers (google off without config)', async () => {
+    const res = await http().get('/api/auth/providers').expect(200);
+    expect(res.body).toEqual({ google: false });
+    await http().get('/api/auth/google').expect(404);
+  });
 });

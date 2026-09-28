@@ -1,5 +1,6 @@
-import { Body, Controller, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { config } from '../config';
 import { MagicLinkDto, VerifyDto } from './auth.dto';
 import { AuthService } from './auth.service';
 import { cookieOptions, SESSION_COOKIE } from './session.guard';
@@ -7,6 +8,11 @@ import { cookieOptions, SESSION_COOKIE } from './session.guard';
 @Controller('auth')
 export class AuthController {
   constructor(private auth: AuthService) {}
+
+  @Get('providers')
+  providers() {
+    return { google: config.google !== null };
+  }
 
   @Post('magic-link')
   @HttpCode(204)
