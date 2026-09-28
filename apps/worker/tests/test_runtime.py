@@ -5,7 +5,7 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from summarize_worker import db
+from summarize_worker import db, handlers
 from summarize_worker.handlers import process
 from summarize_worker.llm import FakeClient
 from tests.pdfs import make_pdf
@@ -137,3 +137,17 @@ def test_fresh_running_jobs_are_left_alone(conn, storage, settings):
     db.claim(conn, "summarize")
     assert db.recover_stale(conn) == 0
     assert job(conn, job_id)["status"] == "running"
+
+
+def test_every_page_is_a_heartbeat(conn, storage, settings):
+    _, _, job_id = seed(conn, storage, TEXT_PDF)
+    db.claim(conn, "analyze")
+    conn.execute("""UPDATE "Job" SET "heartbeatAt" = now() - interval '1 hour' WHERE id = %s""", (job_id,))
+    stale_heartbeat = job(conn, job_id)["heartbeatAt"]
+    on_page = handlers._page_heartbeat(conn, job_id, analyze=True)
+    on_page(1, 3)
+    row = job(conn, job_id)
+    assert row["phase"] == "Reading page 1/3"
+    assert row["heartbeatAt"] > stale_heartbeat
+    on_page(2, 3)
+    on_page(3, 3)

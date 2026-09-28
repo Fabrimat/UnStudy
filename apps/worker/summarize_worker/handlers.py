@@ -42,10 +42,9 @@ def read_chapters(pdf: bytes, ocr_langs: str | None, on_page=None) -> tuple[list
 
 
 def _page_heartbeat(conn, job_id, analyze: bool):
-    # extraction with OCR can outlast the 10-minute stale window, so every page counts as a heartbeat
+    # extraction with OCR can outlast the 10-minute stale window, so every page updates the heartbeat
     def on_page(i: int, n: int):
-        if i % 10 == 0 or i == n:
-            db.progress(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}")
+        db.progress(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}")
     return on_page
 
 

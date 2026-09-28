@@ -1,4 +1,5 @@
 """python -m summarize_worker — one thread per job kind, so a new upload is analysed while a long summary runs."""
+import sys
 import threading
 import time
 import traceback
@@ -14,6 +15,7 @@ from .storage import Storage
 
 POLL_SECONDS = 2
 RECOVERY_EVERY = 300
+ERROR_PAUSE = 5
 
 
 def run(kind: str, settings: Settings, stop: threading.Event) -> None:
@@ -37,6 +39,9 @@ def run(kind: str, settings: Settings, stop: threading.Event) -> None:
             traceback.print_exc()  # database restarted: reconnect after a pause
             conn = None
             stop.wait(5)
+        except Exception:
+            traceback.print_exc()  # never let an unexpected error kill this thread silently
+            stop.wait(ERROR_PAUSE)
 
 
 def main() -> None:
@@ -47,10 +52,12 @@ def main() -> None:
         t.start()
     print(f"worker started (model {settings.llm_model})")
     try:
-        while any(t.is_alive() for t in threads):
+        while all(t.is_alive() for t in threads):
             stop.wait(1)
     except KeyboardInterrupt:
         stop.set()  # a job interrupted mid-run is picked up again by recover_stale
+    if not stop.is_set():
+        sys.exit(1)  # a thread died unexpectedly: exit non-zero so the platform restarts the worker
 
 
 if __name__ == "__main__":
