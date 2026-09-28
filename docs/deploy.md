@@ -1,24 +1,28 @@
 # Deploying Summarize
 
-The reference setup is **Railway (EU region) + Cloudflare R2 (EU jurisdiction) + Resend + Anthropic**. It suits a closed beta: anyone can log in, but only users you grant credits to can generate summaries.
+The reference setup is **Railway (EU region, with a Railway storage bucket) + Resend + Anthropic**. Cloudflare R2 or any other S3-compatible storage works as well. It suits a closed beta: anyone can log in, but only users you grant credits to can generate summaries.
 
 | Piece | Service |
 |---|---|
 | API + web (NestJS serves the React build) | Railway service built from `apps/api/Dockerfile` |
 | Worker (Python, Tesseract, pandoc) | Railway service built from `apps/worker/Dockerfile` |
 | Database | Railway Postgres |
-| Files | Cloudflare R2 bucket |
+| Files | Railway bucket in `ams` (or Cloudflare R2 with EU jurisdiction) |
 | Login emails | Resend (SMTP) |
 | LLM | Any OpenAI-compatible endpoint; Anthropic recommended |
 
 You need a domain of your own: Resend only sends from verified domains, and the app should live on it (for example `app.example.com`).
 
-## 1. Cloudflare R2
+## 1. Storage
+
+**Railway bucket (simplest).** In the project, *Create → Bucket*, region **Amsterdam (ams)**. Reference its credentials from both services (see the variables table). Railway buckets use virtual-hosted URLs, so set `S3_FORCE_PATH_STYLE=false`. Set `S3_CORS_ORIGIN` on the API to your web origin: the API applies the CORS rule to the bucket at startup.
+
+**Cloudflare R2 (alternative).**
 
 1. Create a bucket (for example `summarize`) and choose the **EU** jurisdiction.
 2. Create an R2 API token with *Object Read & Write* on that bucket. Note the access key ID and the secret.
 3. The S3 endpoint is `https://<ACCOUNT_ID>.eu.r2.cloudflarestorage.com`.
-4. Add a CORS policy to the bucket. Browsers upload directly to R2 with presigned URLs:
+4. Set `S3_CORS_ORIGIN` on the API so it applies the CORS rule at startup, or add a CORS policy to the bucket by hand. Browsers upload directly to R2 with presigned URLs:
 
 ```json
 [
@@ -55,21 +59,26 @@ Any other OpenAI-compatible provider works too. Check that its terms allow use i
 ## 4. Railway
 
 1. Push the repository to GitHub.
-2. Create a Railway project in the **EU West** region and add a **Postgres** database.
-3. Add a service from the repo for the **API**. In *Settings → Config-as-code* set the path to `apps/api/railway.json`. Leave the root directory as the repository root: the Dockerfile builds from it.
-4. Add a second service from the same repo for the **worker**, with config path `apps/worker/railway.json`.
-5. Under the API service, *Networking → Custom domain*, add `app.example.com` and create the CNAME record Railway shows.
-6. Set these variables. Use shared variables for the values both services need.
+2. Create a Railway project, add a **Postgres** database and the bucket from step 1.
+3. Add two empty services, `api` and `worker`, and connect both to the GitHub repo (branch `main`). Leave the root directory as the repository root: the Dockerfiles build from it.
+4. In each service's *Settings*:
+   - **api**: Dockerfile path `apps/api/Dockerfile`; pre-deploy command `sh -c "cd /app && pnpm --filter @summarize/db exec prisma migrate deploy"`; healthcheck path `/api/health`; restart policy *On failure*.
+   - **worker**: Dockerfile path `apps/worker/Dockerfile`; restart policy *On failure*.
+   - **Region**: move `api`, `worker` and `Postgres` to **EU West (Amsterdam)** (new services start in the US).
+5. Under the API service, *Networking*, generate a Railway domain or add your own (for example `app.example.com`), with target port `3000`.
+6. Set these variables (`files` is the bucket's name in these references):
 
 | Variable | API | Worker | Value |
 |---|---|---|---|
+| `PORT` | ✓ | | `3000` |
 | `DATABASE_URL` | ✓ | ✓ | `${{Postgres.DATABASE_URL}}` |
-| `S3_ENDPOINT` | ✓ | ✓ | `https://<ACCOUNT_ID>.eu.r2.cloudflarestorage.com` |
-| `S3_REGION` | ✓ | ✓ | `auto` |
-| `S3_BUCKET` | ✓ | ✓ | `summarize` |
-| `S3_ACCESS_KEY_ID` | ✓ | ✓ | R2 access key ID |
-| `S3_SECRET_ACCESS_KEY` | ✓ | ✓ | R2 secret |
-| `S3_FORCE_PATH_STYLE` | ✓ | | `true` |
+| `S3_ENDPOINT` | ✓ | ✓ | `${{files.ENDPOINT}}` (R2: `https://<ACCOUNT_ID>.eu.r2.cloudflarestorage.com`) |
+| `S3_REGION` | ✓ | ✓ | `${{files.REGION}}` (R2: `auto`) |
+| `S3_BUCKET` | ✓ | ✓ | `${{files.BUCKET}}` |
+| `S3_ACCESS_KEY_ID` | ✓ | ✓ | `${{files.ACCESS_KEY_ID}}` |
+| `S3_SECRET_ACCESS_KEY` | ✓ | ✓ | `${{files.SECRET_ACCESS_KEY}}` |
+| `S3_FORCE_PATH_STYLE` | ✓ | ✓ | `false` for Railway buckets, `true` for R2 |
+| `S3_CORS_ORIGIN` | ✓ | | same as `WEB_ORIGIN` |
 | `WEB_ORIGIN` | ✓ | | `https://app.example.com` |
 | `SMTP_URL` | ✓ | | see Resend |
 | `MAIL_FROM` | ✓ | | `Summarize <login@example.com>` |
@@ -78,7 +87,7 @@ Any other OpenAI-compatible provider works too. Check that its terms allow use i
 | `LLM_API_KEY` | | ✓ | see LLM |
 | `LLM_MODEL` | | ✓ | see LLM |
 
-`NODE_ENV=production` is already set in the API image; it turns on `Secure` cookies. Database migrations run automatically before each API deploy (`preDeployCommand` in `apps/api/railway.json`).
+`NODE_ENV=production` is already set in the API image; it turns on `Secure` cookies. Database migrations run automatically before each API deploy (the pre-deploy command).
 
 ### Google login (optional)
 

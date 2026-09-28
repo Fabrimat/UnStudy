@@ -1,6 +1,6 @@
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { config } from '../config';
 
 // RFC 5987 encoding; encodeURIComponent leaves ' ( ) * unescaped.
@@ -8,7 +8,7 @@ const rfc5987 = (value: string) =>
   encodeURIComponent(value).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
   private bucket = config.s3.bucket;
   private s3 = new S3Client({
     endpoint: config.s3.endpoint,
@@ -16,6 +16,32 @@ export class StorageService {
     forcePathStyle: config.s3.forcePathStyle,
     credentials: { accessKeyId: config.s3.accessKeyId, secretAccessKey: config.s3.secretAccessKey },
   });
+
+  // Browsers PUT straight to the bucket, so it needs a CORS rule for the web origin.
+  async onModuleInit() {
+    if (!config.s3.corsOrigins.length) return;
+    try {
+      await this.s3.send(
+        new PutBucketCorsCommand({
+          Bucket: this.bucket,
+          CORSConfiguration: {
+            CORSRules: [
+              {
+                AllowedOrigins: config.s3.corsOrigins,
+                AllowedMethods: ['PUT', 'GET', 'HEAD'],
+                AllowedHeaders: ['*'],
+                ExposeHeaders: ['ETag'],
+                MaxAgeSeconds: 3600,
+              },
+            ],
+          },
+        }),
+      );
+    } catch (e) {
+      // uploads fail in the browser until CORS is set by hand, but the API itself still works
+      new Logger(StorageService.name).warn(`Could not set bucket CORS: ${(e as Error).message}`);
+    }
+  }
 
   // Presigned PUT (not POST: R2 has no POST policies). Content-Length is signed, and confirm re-checks it with HEAD.
   uploadUrl(key: string, sizeBytes: number) {

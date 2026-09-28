@@ -21,6 +21,8 @@ export const config = {
     accessKeyId: need('S3_ACCESS_KEY_ID'),
     secretAccessKey: need('S3_SECRET_ACCESS_KEY'),
     forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
+    // comma-separated origins allowed to upload from the browser; when set, applied to the bucket at startup
+    corsOrigins: (process.env.S3_CORS_ORIGIN ?? '').split(',').map((o) => o.trim()).filter(Boolean),
   },
   smtpUrl: need('SMTP_URL'),
   mailFrom: need('MAIL_FROM'),

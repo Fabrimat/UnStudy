@@ -57,7 +57,7 @@ PYTHON=$(pwd)/.venv/bin/python pnpm e2e           # Playwright: login → upload
 
 ## Deployment
 
-See [docs/deploy.md](docs/deploy.md) for a step-by-step guide (Railway, Cloudflare R2, Resend, Anthropic). Both services ship with a Dockerfile and a Railway config.
+See [docs/deploy.md](docs/deploy.md) for a step-by-step guide (Railway, Cloudflare R2, Resend, Anthropic). Both services ship with a Dockerfile.
 
 ## Design documents
 
