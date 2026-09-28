@@ -13,28 +13,37 @@ services:
       test: ["CMD-SHELL", "pg_isready -U summarize"]
       interval: 2s
       retries: 30
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address :9001
+  s3:
+    image: rustfs/rustfs:latest
     environment:
-      MINIO_ROOT_USER: summarize
-      MINIO_ROOT_PASSWORD: summarize-secret
+      RUSTFS_ACCESS_KEY: summarize
+      RUSTFS_SECRET_KEY: summarize-secret
     ports: ["9000:9000", "9001:9001"]
-    volumes: [miniodata:/data]
+    volumes: [s3data:/data]
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 2s
       retries: 30
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      minio: { condition: service_healthy }
+  s3-init:
+    image: amazon/aws-cli:latest
+    depends_on: [s3]
+    environment:
+      AWS_ACCESS_KEY_ID: summarize
+      AWS_SECRET_ACCESS_KEY: summarize-secret
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./docker/s3-cors.json:/cors.json:ro
     entrypoint: >
-      sh -c "mc alias set local http://minio:9000 summarize summarize-secret &&
-             mc mb --ignore-existing local/summarize local/summarize-test"
+      sh -c "until aws --endpoint-url http://s3:9000 s3api list-buckets >/dev/null 2>&1; do
+               echo waiting for s3...; sleep 1;
+             done &&
+             for b in summarize summarize-test; do
+               aws --endpoint-url http://s3:9000 s3api create-bucket --bucket $$b >/dev/null 2>&1 || true;
+               aws --endpoint-url http://s3:9000 s3api put-bucket-cors --bucket $$b --cors-configuration file:///cors.json;
+             done"
   mailpit:
     image: axllent/mailpit:latest
     ports: ["1025:1025", "8025:8025"]
 volumes:
   pgdata:
-  miniodata:
+  s3data:

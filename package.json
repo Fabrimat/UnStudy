@@ -6,7 +6,7 @@
     "build": "turbo run build",
     "test": "turbo run test --concurrency=1",
     "e2e": "pnpm --filter @summarize/e2e e2e",
-    "infra:up": "docker compose up -d --wait postgres minio mailpit && docker compose run --rm minio-init",
+    "infra:up": "docker compose up -d --wait postgres s3 mailpit && docker compose run --rm s3-init",
     "infra:down": "docker compose down"
   },
   "devDependencies": {

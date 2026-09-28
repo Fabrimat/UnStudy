@@ -9,7 +9,7 @@ corepack enable
 python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: .venv/bin/activate
 pip install -e "apps/worker[dev]"
 pnpm install
-pnpm infra:up          # Postgres, MinIO, Mailpit
+pnpm infra:up          # Postgres, RustFS (S3-compatible), Mailpit
 pnpm --filter @summarize/db migrate
 pnpm dev               # api :3000, web :5173, worker
 ```
