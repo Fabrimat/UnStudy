@@ -8,11 +8,18 @@ from psycopg.types.json import Jsonb
 from summarize_worker import db, handlers
 from summarize_worker.handlers import process
 from summarize_worker.llm import FakeClient
+from summarize_worker.text import clean_pages, extract_pages, split_chapters
 from tests.pdfs import make_pdf
 
 OPTIONS = {"language": "auto", "fraction": 3, "preset": "studio"}
 TEXT_PDF = make_pdf(["Chapter 1 Origins\n" + "Democracy shares power. " * 30,
                      "Chapter 2 Growth\n" + "Consensus spreads power. " * 30])
+
+
+def _real_words(pdf: bytes) -> int:
+    """What handle_summarize would extract & price this PDF at, absent any tampering."""
+    pages, toc, _ = extract_pages(pdf, None)
+    return sum(c.words for c in split_chapters(clean_pages(pages), toc))
 
 
 class BrokenClient:
@@ -24,13 +31,16 @@ class BrokenClient:
         raise RuntimeError("LLM down")
 
 
-def seed(conn, storage, pdf: bytes, *, kind="analyze", doc_status="uploaded", credits=0, attempts=0):
+def seed(conn, storage, pdf: bytes, *, kind="analyze", doc_status="uploaded", credits=0, attempts=0, words=None):
     user = conn.execute('INSERT INTO "User" (email) VALUES (%s) RETURNING id', (f"{uuid4().hex}@x.com",)).fetchone()["id"]
     doc_id = uuid4()
     key = f"users/{user}/documents/{doc_id}.pdf"
     storage.put(key, pdf, "application/pdf")
-    conn.execute('INSERT INTO "Document" (id, "userId", "s3Key", filename, "sizeBytes", status) '
-                 'VALUES (%s, %s, %s, %s, %s, %s::"DocumentStatus")', (doc_id, user, key, "t.pdf", len(pdf), doc_status))
+    if words is None and kind == "summarize":
+        words = _real_words(pdf)  # matches what was actually priced, unless a test overrides it
+    conn.execute('INSERT INTO "Document" (id, "userId", "s3Key", filename, "sizeBytes", status, words) '
+                 'VALUES (%s, %s, %s, %s, %s, %s::"DocumentStatus", %s)',
+                 (doc_id, user, key, "t.pdf", len(pdf), doc_status, words))
     job_id = conn.execute('INSERT INTO "Job" ("userId", "documentId", kind, options, credits, attempts) '
                           'VALUES (%s, %s, %s::"JobKind", %s, %s, %s) RETURNING id',
                           (user, doc_id, kind, Jsonb(OPTIONS if kind == "summarize" else {}), credits, attempts)).fetchone()["id"]
@@ -121,6 +131,19 @@ def test_failed_summary_retries_once_then_refunds(conn, storage, settings, monke
     row = job(conn, job_id)
     assert (row["status"], row["error"]) == ("failed", db.SUMMARY_ERROR)
     assert balance(conn, user) == 3
+
+
+def test_summarize_fails_immediately_if_file_changed_after_pricing(conn, storage, settings):
+    # Document.words (frozen at analyze time / used to price the job) no longer matches what the
+    # stored PDF actually yields -> the swapped-file credit bypass (F1). Must fail with no retry,
+    # a refund, and zero LLM calls.
+    user, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3, words=1)
+    client = FakeClient()
+    run_one(conn, storage, settings, "summarize", client)
+    row = job(conn, job_id)
+    assert (row["status"], row["error"]) == ("failed", db.SUMMARY_ERROR)
+    assert balance(conn, user) == 3
+    assert client.calls == []
 
 
 def test_stale_jobs_are_requeued_or_refunded(conn, storage, settings):

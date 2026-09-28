@@ -71,6 +71,12 @@ def _fail(conn, job_id) -> None:
                         WHERE id = %s AND status = 'uploaded'""", (ANALYZE_ERROR, row["documentId"]))
 
 
+def fail(conn, job: dict) -> None:
+    """Fail immediately, no retry (e.g. the source file changed after pricing): refunds like any other failure."""
+    with conn.transaction():
+        _fail(conn, job["id"])
+
+
 def fail_or_retry(conn, job: dict) -> None:
     """After an exception: requeue while attempts remain, else fail (refunding summaries)."""
     with conn.transaction():

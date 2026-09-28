@@ -16,6 +16,10 @@ class Rejected(Exception):
     """The file itself is unusable; the message is shown to the user."""
 
 
+class FileChanged(Exception):
+    """The stored PDF no longer matches what priced the job (F1 credit bypass): fail now, no retry."""
+
+
 def load_pdf(storage, doc: dict) -> bytes:
     if storage.size(doc["s3Key"]) > MAX_BYTES:
         raise Rejected("File larger than 50 MB")
@@ -64,6 +68,10 @@ def handle_summarize(conn, storage, settings, client, job: dict) -> None:
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
                                    _page_heartbeat(conn, job["id"], analyze=False))
+    if sum(c.words for c in chapters) != doc["words"]:
+        # The object behind the presigned PUT URL was swapped after analyze priced the job: never
+        # call the LLM on it, and never retry (a retry would just re-read the same swapped file).
+        raise FileChanged("The file changed after it was priced")
     opts = job["options"]
     usage = Usage()
     markdown, warnings = summarize_chapters(
@@ -84,6 +92,9 @@ def process(conn, storage, settings, client, job: dict) -> None:
             handle_analyze(conn, storage, settings, job)
         else:
             handle_summarize(conn, storage, settings, client, job)
+    except FileChanged:
+        traceback.print_exc()  # details stay in the worker log; the user sees db.SUMMARY_ERROR
+        db.fail(conn, job)
     except Exception:
         traceback.print_exc()  # details stay in the worker log; the user sees db.SUMMARY_ERROR / ANALYZE_ERROR
         db.fail_or_retry(conn, job)
