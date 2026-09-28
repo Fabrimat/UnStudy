@@ -25,10 +25,11 @@ describe('documents', () => {
   it('uploads through a signed URL and queues the analysis', async () => {
     const { user, cookie } = await loginAs(app, 'u@x.com');
     const res = await create(cookie, { filename: 'Reading.pdf', sizeBytes: PDF.length }).expect(201);
-    expect(res.body.document).toMatchObject({ filename: 'Reading.pdf', status: 'uploaded', credits: null });
+    expect(res.body.document).toMatchObject({ filename: 'Reading.pdf', status: 'uploaded', credits: null, analysisQueued: false });
     const put = await fetch(res.body.uploadUrl, { method: 'PUT', body: PDF, headers: { 'Content-Type': 'application/pdf' } });
     expect(put.status).toBe(200);
-    await confirm(cookie, res.body.document.id).expect(201);
+    const confirmed = await confirm(cookie, res.body.document.id).expect(201);
+    expect(confirmed.body.analysisQueued).toBe(true);
     const jobs = await prisma.job.findMany({ where: { documentId: res.body.document.id } });
     expect(jobs).toMatchObject([{ kind: 'analyze', status: 'queued', userId: user.id }]);
     await confirm(cookie, res.body.document.id).expect(409);

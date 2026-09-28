@@ -8,13 +8,19 @@ import { StorageService } from '../storage/storage.service';
 import { MAX_UPLOAD_BYTES } from './documents.dto';
 
 const MAX_UPLOADS_PER_HOUR = 30;
-const withSummaries = { jobs: { where: { kind: 'summarize' as const }, orderBy: { createdAt: 'desc' as const } } };
+const withSummaries = {
+  jobs: { where: { kind: 'summarize' as const }, orderBy: { createdAt: 'desc' as const } },
+  _count: { select: { jobs: { where: { kind: 'analyze' as const } } } },
+};
 
-export function toDocDto(doc: Document & { jobs?: Job[] }) {
+export function toDocDto(doc: Document & { jobs?: Job[]; _count?: { jobs: number } }) {
   const { id, filename, sizeBytes, status, rejectReason, pages, words, chapters, createdAt } = doc;
   return {
     id, filename, sizeBytes, status, rejectReason, pages, words, chapters, createdAt,
     credits: words ? creditsFor(words) : null,
+    // An interrupted upload (no PUT, no confirm) never gets an analyze job, so the doc is stuck
+    // "uploaded" forever; the web uses this to tell that apart from a normal in-flight analyze (F3).
+    analysisQueued: (doc._count?.jobs ?? 0) > 0,
     jobs: (doc.jobs ?? []).map(toJobDto),
   };
 }
@@ -58,7 +64,7 @@ export class DocumentsService {
       return { rejected: false as const, doc };
     });
     if (result.rejected) throw new BadRequestException('Uploaded file does not match the declared size');
-    return toDocDto(result.doc);
+    return toDocDto({ ...result.doc, _count: { jobs: 1 } }); // the analyze job was just created above
   }
 
   async list(user: User) {

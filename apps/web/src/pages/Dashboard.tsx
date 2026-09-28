@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { api, Doc, uploadFile } from '../api';
+import { api, Doc, uploadFailed, uploadFile } from '../api';
 
-const busy = (d: Doc) => d.status === 'uploaded' || d.jobs.some((j) => j.status === 'queued' || j.status === 'running');
+const busy = (d: Doc) =>
+  (d.status === 'uploaded' && !uploadFailed(d)) || d.jobs.some((j) => j.status === 'queued' || j.status === 'running');
 
 function docStatus(d: Doc) {
-  if (d.status === 'uploaded') return 'Analyzing…';
+  if (d.status === 'uploaded') return uploadFailed(d) ? 'Upload failed — please upload the file again' : 'Analyzing…';
   if (d.status === 'rejected') return `Rejected: ${d.rejectReason}`;
   const job = d.jobs[0];
   if (!job) return `${d.pages} pages · ${d.credits} credits`;

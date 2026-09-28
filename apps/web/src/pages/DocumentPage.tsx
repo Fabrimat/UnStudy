@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { api, ApiError, Doc, Job, useMe } from '../api';
+import { api, ApiError, Doc, Job, uploadFailed, useMe } from '../api';
 
 const LANGUAGES = [['auto', 'Same as the document'], ['en', 'English'], ['it', 'Italian'], ['nl', 'Dutch'], ['fr', 'French'], ['de', 'German'], ['es', 'Spanish']] as const;
 const FRACTIONS = [[3, '1/3 of the original'], [5, '1/5 of the original'], [10, '1/10 of the original']] as const;
@@ -40,7 +40,7 @@ export default function DocumentPage() {
   const doc = useQuery({
     queryKey: ['documents', id],
     queryFn: () => api<Doc>(`/documents/${id}`),
-    refetchInterval: (q) => (q.state.data?.status === 'uploaded' ? 2000 : false),
+    refetchInterval: (q) => (q.state.data?.status === 'uploaded' && !uploadFailed(q.state.data) ? 2000 : false),
   });
   const start = useMutation({
     mutationFn: () =>
@@ -57,7 +57,9 @@ export default function DocumentPage() {
   if (doc.error) return <p className="text-red-600">{doc.error.message}</p>;
   if (!doc.data) return <p>Loading…</p>;
   const d = doc.data;
-  if (d.status === 'uploaded') return <p>Analyzing {d.filename}…</p>;
+  if (d.status === 'uploaded') {
+    return <p>{uploadFailed(d) ? 'Upload failed — please upload the file again' : `Analyzing ${d.filename}…`}</p>;
+  }
   if (d.status === 'rejected') return <p>{d.filename} was rejected: {d.rejectReason}</p>;
 
   return (

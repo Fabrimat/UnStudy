@@ -11,8 +11,15 @@ export type Job = {
 export type Doc = {
   id: string; filename: string; sizeBytes: number; status: 'uploaded' | 'analyzed' | 'rejected';
   rejectReason: string | null; pages: number | null; words: number | null; chapters: Chapter[] | null;
-  credits: number | null; createdAt: string; jobs: Job[];
+  credits: number | null; createdAt: string; jobs: Job[]; analysisQueued: boolean;
 };
+
+const UPLOAD_TIMEOUT_MS = 15 * 60_000;
+
+// An interrupted upload (PUT or confirm never happened) never gets an analyze job, so the
+// document is stuck "uploaded" forever instead of moving on to "Analyzing…" (F3).
+export const uploadFailed = (d: Doc) =>
+  d.status === 'uploaded' && !d.analysisQueued && Date.now() - new Date(d.createdAt).getTime() > UPLOAD_TIMEOUT_MS;
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body: any) {
