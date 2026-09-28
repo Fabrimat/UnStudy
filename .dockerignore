@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.venv
+.env
+.git
+.turbo
+e2e
+legacy
+/*.pdf
+/Lijphart*
+.superpowers
+playwright-report
+test-results
