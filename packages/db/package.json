@@ -1,0 +1,19 @@
+{
+  "name": "@summarize/db",
+  "private": true,
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "prisma generate",
+    "generate": "prisma generate",
+    "migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^8.0.0",
+    "prisma": "^6.16.0"
+  }
+}

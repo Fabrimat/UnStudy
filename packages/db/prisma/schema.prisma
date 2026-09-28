@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AuthProvider {
+  email
+  google
+  apple
+}
+
+enum DocumentStatus {
+  uploaded
+  analyzed
+  rejected
+}
+
+enum JobKind {
+  analyze
+  summarize
+}
+
+enum JobStatus {
+  queued
+  running
+  done
+  failed
+}
+
+enum LedgerType {
+  purchase
+  reserve
+  charge
+  refund
+  grant
+  revoke
+}
+
+model User {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String         @unique
+  name      String?
+  createdAt DateTime       @default(now())
+  deletedAt DateTime?
+  accounts  AuthAccount[]
+  sessions  Session[]
+  documents Document[]
+  jobs      Job[]
+  ledger    CreditLedger[]
+}
+
+model AuthAccount {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String       @db.Uuid
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          AuthProvider
+  providerAccountId String
+
+  @@unique([provider, providerAccountId])
+}
+
+model MagicLinkToken {
+  tokenHash String    @id
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, createdAt])
+}
+
+/// id = sha256 of the cookie value; the raw token is never stored.
+model Session {
+  id        String   @id
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Document {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String         @db.Uuid
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  s3Key         String
+  filename      String
+  sizeBytes     Int
+  pages         Int?
+  words         Int?
+  usedOcr       Boolean        @default(false)
+  /// [{ title, pageFrom, pageTo, words }]
+  chapters      Json?
+  status        DocumentStatus @default(uploaded)
+  rejectReason  String?
+  createdAt     DateTime       @default(now())
+  fileDeletedAt DateTime?
+  jobs          Job[]
+
+  @@index([userId, createdAt])
+}
+
+model Job {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String         @db.Uuid
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId    String         @db.Uuid
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  kind          JobKind
+  /// { language, fraction, preset, bibliographicLine? }
+  options       Json           @default("{}")
+  status        JobStatus      @default(queued)
+  attempts      Int            @default(0)
+  progress      Int            @default(0)
+  phase         String         @default("queued")
+  heartbeatAt   DateTime?
+  credits       Int            @default(0)
+  inputTokens   Int            @default(0)
+  outputTokens  Int            @default(0)
+  /// output of the automatic checks; admin only, never sent to the browser
+  warnings      Json           @default("[]")
+  resultMdKey   String?
+  resultDocxKey String?
+  /// user-safe message only
+  error         String?
+  createdAt     DateTime       @default(now())
+  finishedAt    DateTime?
+  ledger        CreditLedger[]
+
+  @@index([status, kind, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Append-only. Balance = SUM(amount). One row per (jobId, type) keeps charge/refund idempotent.
+model CreditLedger {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String     @db.Uuid
+  user          User       @relation(fields: [userId], references: [id])
+  type          LedgerType
+  amount        Int
+  jobId         String?    @db.Uuid
+  job           Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  stripeEventId String?
+  createdAt     DateTime   @default(now())
+
+  @@unique([jobId, type])
+  @@index([userId])
+}
