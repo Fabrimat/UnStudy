@@ -9,7 +9,7 @@ class Storage:
         self.bucket = settings.s3_bucket
         self.s3 = boto3.client("s3", endpoint_url=settings.s3_endpoint, region_name=settings.s3_region,
                                aws_access_key_id=settings.s3_key, aws_secret_access_key=settings.s3_secret,
-                               config=Config(s3={"addressing_style": "path"}))
+                               config=Config(s3={"addressing_style": "path" if settings.s3_force_path_style else "virtual"}))
 
     def get(self, key: str) -> bytes:
         return self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read()

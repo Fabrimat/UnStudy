@@ -25,6 +25,7 @@ class Settings:
     llm_api_key: str
     llm_model: str
     ocr_langs: str | None
+    s3_force_path_style: bool = True  # False for virtual-hosted buckets (e.g. Railway, AWS)
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -42,4 +43,5 @@ class Settings:
             llm_api_key=e.get("LLM_API_KEY") or e.get("NVIDIA_API_KEY", ""),
             llm_model=e["LLM_MODEL"],
             ocr_langs=e.get("OCR_LANGS") or None,
+            s3_force_path_style=e.get("S3_FORCE_PATH_STYLE", "true") == "true",
         )
