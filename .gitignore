@@ -1,0 +1,5 @@
+.env
+__pycache__/
+run.log
+run_ultra.log
+progresso.txt
