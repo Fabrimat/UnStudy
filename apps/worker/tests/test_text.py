@@ -1,7 +1,7 @@
 import fitz
 import pytest
 
-from summarize_worker.text import clean_pages, extract_pages, inspect_pdf, split_chapters
+from summarize_worker.text import clean_pages, extract_pages, inspect_pdf, ocr_dpi, split_chapters
 from tests.pdfs import make_pdf
 
 
@@ -65,3 +65,26 @@ def test_empty_document_has_no_chapters():
 def test_clean_pages_drops_repeated_headers_and_page_numbers():
     pages = [f"PATTERNS OF DEMOCRACY\nBody text {i}\n{i}" for i in range(1, 6)]
     assert clean_pages(pages) == [f"Body text {i}" for i in range(1, 6)]
+
+
+def test_ocr_dpi_is_300_for_a_normal_page():
+    assert ocr_dpi(595, 842) == 300  # A4
+
+
+def test_ocr_dpi_scales_down_for_a_large_page_without_exceeding_the_pixel_cap():
+    dpi = ocr_dpi(3000, 3000)
+    assert 72 < dpi < 300
+    assert (3000 / 72 * dpi) ** 2 <= 40_000_000
+
+
+def test_ocr_dpi_never_goes_below_72_even_if_still_over_the_cap():
+    assert ocr_dpi(14400, 14400) == 72
+
+
+def test_ocr_is_skipped_for_a_page_too_large_to_render_safely():
+    doc = fitz.open()
+    doc.new_page(width=14400, height=14400)  # even at 72dpi this would be 200M+ pixels
+    pdf = doc.tobytes()
+    doc.close()
+    pages, _, used_ocr = extract_pages(pdf, ocr_langs="eng")
+    assert pages == [""] and used_ocr is False

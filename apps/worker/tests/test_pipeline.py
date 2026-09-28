@@ -1,3 +1,5 @@
+import socket
+import threading
 import zipfile
 from io import BytesIO
 from types import SimpleNamespace
@@ -73,3 +75,29 @@ def test_docx_has_real_headings():
     assert data[:2] == b"PK"
     xml = zipfile.ZipFile(BytesIO(data)).read("word/document.xml")
     assert b"Heading1" in xml and b"Heading2" in xml
+
+
+def test_docx_sandboxes_image_fetches():
+    """LLM output can contain markdown image links; pandoc must never fetch them (SSRF / local file read)."""
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    srv.settimeout(1)
+    connections = []
+
+    def accept_once():
+        try:
+            connections.append(srv.accept())
+        except socket.timeout:
+            pass
+
+    t = threading.Thread(target=accept_once)
+    t.start()
+    try:
+        data = to_docx(f"# T\n![x](http://127.0.0.1:{port}/evil.png)\n![y](/etc/passwd)\n")
+    finally:
+        t.join()
+        srv.close()
+    assert data[:2] == b"PK"
+    assert connections == []  # pandoc never opened a socket to fetch the "remote" image

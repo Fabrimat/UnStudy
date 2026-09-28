@@ -6,6 +6,7 @@ from typing import Callable
 import fitz  # PyMuPDF
 
 CHAPTER_HEADING = re.compile(r"^\s*(cap(itolo)?\.?\s*\d+|chapter\s*\d+|parte\s+[ivxlcdm\d]+)\b", re.IGNORECASE)
+MAX_OCR_PIXELS = 40_000_000  # bound the rendered bitmap so a huge PDF page can't exhaust memory
 
 
 @dataclass
@@ -55,11 +56,26 @@ def extract_pages(pdf: bytes, ocr_langs: str | None,
         doc.close()
 
 
+def _pixels(width_pt: float, height_pt: float, dpi: int) -> float:
+    return (width_pt / 72 * dpi) * (height_pt / 72 * dpi)
+
+
+def ocr_dpi(width_pt: float, height_pt: float, max_pixels: int = MAX_OCR_PIXELS) -> int:
+    """300dpi normally; scaled down (never below 72) to keep the rendered bitmap under max_pixels."""
+    if _pixels(width_pt, height_pt, 300) <= max_pixels:
+        return 300
+    return max(72, int((max_pixels / _pixels(width_pt, height_pt, 1)) ** 0.5))
+
+
 def _ocr(page, langs: str) -> str:
     try:
+        w, h = page.rect.width, page.rect.height
+        dpi = ocr_dpi(w, h)
+        if _pixels(w, h, dpi) > MAX_OCR_PIXELS:
+            return ""  # even 72dpi renders too many pixels: skip OCR for this page
         import pytesseract
         from PIL import Image
-        pix = page.get_pixmap(dpi=300)  # rendered by PyMuPDF: no poppler needed
+        pix = page.get_pixmap(dpi=dpi)  # rendered by PyMuPDF: no poppler needed
         return pytesseract.image_to_string(Image.frombytes("RGB", (pix.width, pix.height), pix.samples), lang=langs)
     except Exception as e:  # tesseract missing or failing: keep the text layer
         print(f"OCR failed on page {page.number + 1}: {e}")

@@ -9,5 +9,6 @@ def to_docx(markdown: str) -> bytes:
     import pypandoc
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "summary.docx"
-        pypandoc.convert_text(fix_format(markdown, None), "docx", format="markdown", outputfile=str(out))
+        pypandoc.convert_text(fix_format(markdown, None), "docx", format="markdown", outputfile=str(out),
+                              extra_args=["--sandbox"])  # LLM output can contain image links; never let pandoc fetch them
         return out.read_bytes()
