@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { User } from '@summarize/db';
+import { Response } from 'express';
 import { CurrentUser, SessionGuard } from '../auth/session.guard';
 import { CreateJobDto } from './jobs.dto';
 import { JobsService } from './jobs.service';
@@ -22,5 +23,33 @@ export class JobsController {
   @Get(':id/download')
   download(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Query('format') format: string) {
     return this.jobs.downloadUrl(user, id, format);
+  }
+
+  // ponytail: one DB poll every 2 s per open stream; switch to LISTEN/NOTIFY if many viewers watch at once.
+  @Get(':id/events')
+  async events(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const first = await this.jobs.get(user, id); // throws 404 before any header is sent
+    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.flushHeaders();
+    let last = '';
+    const send = (job: typeof first) => {
+      const data = JSON.stringify(job);
+      if (data !== last) res.write(`data: ${data}\n\n`);
+      last = data;
+      return job.status === 'done' || job.status === 'failed';
+    };
+    if (send(first)) return res.end();
+    const timer = setInterval(async () => {
+      try {
+        if (send(await this.jobs.get(user, id))) {
+          clearInterval(timer);
+          res.end();
+        }
+      } catch {
+        clearInterval(timer);
+        res.end();
+      }
+    }, 2000);
+    res.on('close', () => clearInterval(timer));
   }
 }
