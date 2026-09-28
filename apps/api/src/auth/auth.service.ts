@@ -17,14 +17,20 @@ export class AuthService {
 
   async requestMagicLink(rawEmail: string) {
     const email = normalizeEmail(rawEmail);
-    const recent = await this.prisma.magicLinkToken.count({
-      where: { email, createdAt: { gt: new Date(Date.now() - 3600_000) } },
-    });
-    if (recent >= MAX_LINKS_PER_HOUR) throw new HttpException('Too many login links requested, try again later', 429);
     const token = randomToken();
-    await this.prisma.magicLinkToken.create({
-      data: { tokenHash: sha256(token), email, expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MS) },
+    await this.prisma.$transaction(async (tx) => {
+      // Serialize concurrent requests for the same email so the count-then-create rate check can't race.
+      // $executeRaw, not $queryRaw: pg_advisory_xact_lock returns void, which $queryRaw can't deserialize.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${email}))`;
+      const recent = await tx.magicLinkToken.count({
+        where: { email, createdAt: { gt: new Date(Date.now() - 3600_000) } },
+      });
+      if (recent >= MAX_LINKS_PER_HOUR) throw new HttpException('Too many login links requested, try again later', 429);
+      await tx.magicLinkToken.create({
+        data: { tokenHash: sha256(token), email, expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MS) },
+      });
     });
+    // Sent after the transaction commits so SMTP latency never holds the advisory lock.
     // The link opens a web page that POSTs the token: mail scanners that prefetch GET links cannot burn it.
     const link = `${config.webOrigin}/auth/verify?token=${token}`;
     await this.mail.send(

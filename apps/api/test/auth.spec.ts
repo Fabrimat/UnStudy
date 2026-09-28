@@ -59,6 +59,13 @@ describe('magic link auth', () => {
     await requestLink('a@b.co').expect(429);
   });
 
+  it('keeps the hourly limit under concurrent requests', async () => {
+    const results = await Promise.all(Array.from({ length: 8 }, () => requestLink('race@b.co')));
+    const statuses = results.map((r) => r.status).sort();
+    expect(statuses).toEqual([204, 204, 204, 204, 204, 429, 429, 429]);
+    await expect(prisma.magicLinkToken.count({ where: { email: 'race@b.co' } })).resolves.toBe(5);
+  });
+
   it('requires a session for /me and logout ends it', async () => {
     await http().get('/api/me').expect(401);
     await requestLink('a@b.co').expect(204);
