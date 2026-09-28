@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { AuthModule } from './auth/auth.module';
 import { CreditsModule } from './credits/credits.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -8,6 +11,9 @@ import { HealthController } from './health.controller';
 import { JobsModule } from './jobs/jobs.module';
 import { MeController } from './me.controller';
 import { PrismaModule } from './prisma.module';
+
+// apps/web/dist only exists after `pnpm --filter @summarize/web build`; served here so production is a single deployable.
+const webDist = join(process.cwd(), '../web/dist');
 
 @Module({
   imports: [
@@ -17,6 +23,7 @@ import { PrismaModule } from './prisma.module';
     DocumentsModule,
     JobsModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    ...(existsSync(webDist) ? [ServeStaticModule.forRoot({ rootPath: webDist, exclude: ['/api/{*path}'] })] : []),
   ],
   controllers: [HealthController, MeController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
