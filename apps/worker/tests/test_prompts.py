@@ -1,6 +1,6 @@
 import pytest
 
-from summarize_worker.prompts import PRESETS, render_instructions
+from summarize_worker.prompts import PLATFORM_RULES, PRESETS, render_custom, render_instructions
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -19,3 +19,10 @@ def test_unknown_values_are_rejected():
         render_instructions("poem", "en", 3)
     with pytest.raises(KeyError):
         render_instructions("studio", "xx", 3)
+
+
+def test_custom_prompt_is_user_text_then_platform_block_with_placeholders_filled():
+    text = render_custom("Be brief in {language}, keep {fraction}.", "it", 5)
+    assert text.startswith("Be brief in Italian, keep one fifth.\n\nPLATFORM RULES")
+    assert text.endswith(PLATFORM_RULES.replace("{language}", "Italian").replace("{fraction}", "one fifth"))
+    assert "{" not in text and "- Language: Italian.\n- Length: about one fifth of" in text

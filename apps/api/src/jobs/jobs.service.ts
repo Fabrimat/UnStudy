@@ -16,7 +16,8 @@ export class JobsService {
   constructor(private prisma: PrismaService, private ledger: LedgerService, private storage: StorageService) {}
 
   async create(user: User, dto: CreateJobDto) {
-    const { documentId, ...options } = dto;
+    const { documentId, method, ...rest } = dto;
+    let customChars = 0;
     const job = await this.prisma.$transaction(async (tx) => {
       // Row lock on the user serialises concurrent starts, so the balance check below cannot race.
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
@@ -27,6 +28,14 @@ export class JobsService {
         where: { userId: user.id, kind: 'summarize', status: { in: ['queued', 'running'] } },
       });
       if (active >= MAX_ACTIVE_SUMMARIES) throw new HttpException(`You already have ${MAX_ACTIVE_SUMMARIES} summaries in progress`, 429);
+      // System preset keeps `preset` for the worker; a custom method is snapshotted so later edits/deletes never touch this job.
+      let options: Prisma.InputJsonObject = { ...rest, method, preset: method };
+      if (method.startsWith('custom:')) {
+        const m = await tx.summaryMethod.findFirst({ where: { id: method.slice(7), userId: user.id } });
+        if (!m) throw new NotFoundException('Method not found');
+        options = { ...rest, method, methodName: m.name, customInstructions: m.instructions };
+        customChars = m.instructions.length;
+      }
       const credits = creditsFor(doc.words);
       const balance = await this.ledger.balance(user.id, tx);
       if (balance < credits) {
@@ -37,7 +46,7 @@ export class JobsService {
       await tx.creditLedger.create({ data: { userId: user.id, type: 'reserve', amount: -credits, jobId: job.id } });
       return toJobDto(job);
     });
-    this.logger.log(`Job created: ${job.id}, ${job.credits} credits reserved`);
+    this.logger.log(`Job created: ${job.id}, ${job.credits} credits reserved, method ${customChars ? `custom (${customChars} chars)` : method}`);
     return job;
   }
 
@@ -49,7 +58,8 @@ export class JobsService {
     const where: Prisma.JobWhereInput = { userId: user.id, kind: 'summarize' };
     if (q.active) where.status = { in: ['queued', 'running'] };
     else if (q.status) where.status = q.status;
-    if (q.method) where.options = { path: ['preset'], equals: q.method };
+    // Old jobs only have options.preset.
+    if (q.method) where.OR = [{ options: { path: ['method'], equals: q.method } }, { options: { path: ['preset'], equals: q.method } }];
     if (q.documentId) where.documentId = q.documentId;
     const res = await page(
       this.prisma,

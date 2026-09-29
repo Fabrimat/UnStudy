@@ -20,6 +20,8 @@ RUN pnpm install --frozen-lockfile --filter @summarize/api... --filter @summariz
 COPY packages/db packages/db
 COPY apps/web apps/web
 COPY apps/api apps/api
+# Served by the API as the start-from texts; the worker owns the files.
+COPY apps/worker/summarize_worker/presets apps/worker/summarize_worker/presets
 
 RUN pnpm --filter @summarize/db build \
  && pnpm --filter @summarize/web build \

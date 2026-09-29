@@ -3,10 +3,9 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import Pager from '../Pager';
 import Select from '../Select';
-import { api, JobWithDoc, Page, qs } from '../api';
+import { api, JobWithDoc, methodLabel, Page, qs, styleOptions, useMethods } from '../api';
 
 const STATUSES = [['', 'All statuses'], ['queued', 'Queued'], ['running', 'Running'], ['done', 'Done'], ['failed', 'Failed']] as const;
-const STYLES = [['', 'All styles'], ['studio', 'Study summary'], ['schematico', 'Structured notes'], ['abstract', 'Short abstract']] as const;
 
 export default function Jobs() {
   const qc = useQueryClient();
@@ -15,6 +14,7 @@ export default function Jobs() {
   const method = sp.get('method') ?? '';
   const page = Number(sp.get('page')) || 1;
   const [error, setError] = useState('');
+  const methods = useMethods();
 
   const set = (patch: Record<string, string>) => {
     const next = new URLSearchParams(sp);
@@ -43,7 +43,7 @@ export default function Jobs() {
       <h1 className="text-xl font-semibold">Summaries</h1>
       <div className="grid gap-3 sm:grid-cols-2">
         <Select label="Status" value={status} onChange={(v) => set({ status: v, page: '' })} options={STATUSES} />
-        <Select label="Style" value={method} onChange={(v) => set({ method: v, page: '' })} options={STYLES} />
+        <Select label="Style" value={method} onChange={(v) => set({ method: v, page: '' })} options={styleOptions(methods.data, [['', 'All styles']])} />
       </div>
       {error && <p className="text-red-600">{error}</p>}
       <div className="overflow-x-auto rounded border bg-white">
@@ -57,7 +57,7 @@ export default function Jobs() {
               <tr key={j.id}>
                 <td className="max-w-48 truncate p-2"><Link to={`/jobs/${j.id}`} className="underline">{j.document.filename}</Link></td>
                 <td className="p-2">{new Date(j.createdAt).toLocaleString()}</td>
-                <td className="p-2">{String(j.options.preset ?? '')}</td>
+                <td className="p-2">{methodLabel(j.options, methods.data)}</td>
                 <td className="p-2">{j.options.fraction ? `1/${j.options.fraction}` : ''}</td>
                 <td className="p-2">{String(j.options.language ?? '')}</td>
                 <td className="p-2">{j.status === 'running' ? `${j.progress}%` : j.status}</td>

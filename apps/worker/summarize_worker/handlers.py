@@ -5,7 +5,7 @@ from . import db
 from .docx import to_docx
 from .llm import Usage
 from .pipeline import summarize_chapters
-from .prompts import render_instructions
+from .prompts import render_custom, render_instructions
 from .text import Chapter, clean_pages, extract_pages, inspect_pdf, split_chapters
 
 MAX_BYTES = 50 * 1024 * 1024
@@ -84,12 +84,18 @@ def handle_summarize(conn, storage, settings, client, job: dict) -> None:
         raise FileChanged("The file changed after it was priced")
     opts = job["options"]
     usage = Usage()
+    custom = opts.get("customInstructions")
+    if isinstance(custom, str) and custom.strip():
+        instructions = render_custom(custom, opts["language"], opts["fraction"])
+        log.debug(f"summarize job {job['id']} custom instructions ({len(custom)} chars)")
+    else:  # a custom:<id> method without a snapshot lands here and fails as an unknown preset
+        instructions = render_instructions(opts.get("preset") or opts.get("method"), opts["language"], opts["fraction"])
 
     def on_call(rec: dict):
         db.record_call(conn, job, rec)  # a raising recorder is swallowed and logged by call_model
 
     markdown, warnings = summarize_chapters(
-        client, settings.llm_model, chapters, render_instructions(opts["preset"], opts["language"], opts["fraction"]),
+        client, settings.llm_model, chapters, instructions,
         fraction=opts["fraction"], bibliographic_line=opts.get("bibliographicLine"),
         on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage,
         on_call=on_call)

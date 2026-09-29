@@ -1,7 +1,8 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { User } from '@summarize/db';
+import { Body, Controller, Get, NotFoundException, Patch, Query, UseGuards } from '@nestjs/common';
+import { Prisma, User } from '@summarize/db';
 import { CurrentUser, SessionGuard } from './auth/session.guard';
 import { LedgerService } from './credits/ledger.service';
+import { PreferencesDto } from './preferences.dto';
 import { page, PageQueryDto } from './pagination';
 import { PrismaService } from './prisma.service';
 
@@ -12,7 +13,25 @@ export class MeController {
 
   @Get()
   async me(@CurrentUser() user: User) {
-    return { id: user.id, email: user.email, name: user.name, balance: await this.ledger.balance(user.id) };
+    return { id: user.id, email: user.email, name: user.name, balance: await this.ledger.balance(user.id), preferences: user.preferences };
+  }
+
+  @Patch('preferences')
+  async setPreferences(@CurrentUser() user: User, @Body() dto: PreferencesDto) {
+    return this.prisma.$transaction(async (tx) => {
+      // User row lock: two concurrent PATCHes must not lose each other's merge.
+      const [row] = await tx.$queryRaw<{ preferences: Prisma.JsonObject }[]>`SELECT preferences FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
+      if (typeof dto.method === 'string' && dto.method.startsWith('custom:')) {
+        if (!(await tx.summaryMethod.findFirst({ where: { id: dto.method.slice(7), userId: user.id } }))) throw new NotFoundException('Method not found');
+      }
+      const merged: Record<string, unknown> = { ...row.preferences };
+      for (const [k, v] of Object.entries(dto)) {
+        if (v === null) delete merged[k];
+        else if (v !== undefined) merged[k] = v;
+      }
+      const updated = await tx.user.update({ where: { id: user.id }, data: { preferences: merged as Prisma.InputJsonObject } });
+      return updated.preferences;
+    });
   }
 
   @Get('ledger')
@@ -42,11 +61,12 @@ export class MeController {
     const [documents, summariesDone, spent, pages] = await this.prisma.$transaction([
       this.prisma.document.count({ where: { userId: user.id } }),
       this.prisma.job.count({ where: done }),
-      this.prisma.job.aggregate({ where: done, _sum: { credits: true } }),
+      // From the ledger, so deleting a finished summary does not lower the total.
+      this.prisma.creditLedger.aggregate({ where: { userId: user.id, type: { in: ['reserve', 'refund', 'charge'] } }, _sum: { amount: true } }),
       this.prisma.$queryRaw<{ pages: number }[]>`
         SELECT COALESCE(SUM(d.pages), 0)::int AS pages FROM "Job" j JOIN "Document" d ON d.id = j."documentId"
         WHERE j."userId" = ${user.id}::uuid AND j.kind = 'summarize' AND j.status = 'done'`,
     ]);
-    return { documents, summariesDone, creditsSpent: spent._sum.credits ?? 0, pagesSummarized: pages[0].pages };
+    return { documents, summariesDone, creditsSpent: -(spent._sum.amount ?? 0), pagesSummarized: pages[0].pages };
   }
 }

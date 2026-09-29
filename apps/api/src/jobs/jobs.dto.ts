@@ -1,6 +1,6 @@
 import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { PageQueryDto } from '../pagination';
-import { FRACTIONS, LANGUAGES, PRESETS } from './options';
+import { FRACTIONS, LANGUAGES, METHOD_MESSAGE, METHOD_RE } from './options';
 
 export class CreateJobDto {
   @IsUUID()
@@ -12,8 +12,8 @@ export class CreateJobDto {
   @IsIn(FRACTIONS)
   fraction: (typeof FRACTIONS)[number];
 
-  @IsIn(PRESETS)
-  preset: (typeof PRESETS)[number];
+  @Matches(METHOD_RE, { message: METHOD_MESSAGE })
+  method: string;
 
   @IsOptional()
   @IsString()

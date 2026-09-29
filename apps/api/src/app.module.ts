@@ -9,6 +9,7 @@ import { CreditsModule } from './credits/credits.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
 import { JobsModule } from './jobs/jobs.module';
+import { MethodsModule } from './methods/methods.module';
 import { MeController } from './me.controller';
 import { PrismaModule } from './prisma.module';
 
@@ -22,6 +23,7 @@ const webDist = join(process.cwd(), '../web/dist');
     CreditsModule,
     DocumentsModule,
     JobsModule,
+    MethodsModule,
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     ...(existsSync(webDist) ? [ServeStaticModule.forRoot({ rootPath: webDist, exclude: ['/api/{*path}'] })] : []),
   ],

@@ -2,11 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import Select from '../Select';
-import { api, ApiError, Doc, Job, uploadFailed, useMe } from '../api';
-
-const LANGUAGES = [['auto', 'Same as the document'], ['en', 'English'], ['it', 'Italian'], ['nl', 'Dutch'], ['fr', 'French'], ['de', 'German'], ['es', 'Spanish']] as const;
-const FRACTIONS = [[3, '1/3 of the original'], [5, '1/5 of the original'], [10, '1/10 of the original']] as const;
-const PRESETS = [['studio', 'Study summary (continuous prose)'], ['schematico', 'Structured notes (bullet points)'], ['abstract', 'Short abstract']] as const;
+import { api, ApiError, Doc, FRACTIONS, Job, LANGUAGES, styleOptions, uploadFailed, useMe, useMethods } from '../api';
 
 function errorText(e: Error) {
   if (e instanceof ApiError && e.status === 402) {
@@ -20,9 +16,16 @@ export default function DocumentPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const me = useMe();
-  const [language, setLanguage] = useState<string>('auto');
-  const [fraction, setFraction] = useState<number>(3);
-  const [preset, setPreset] = useState<string>('studio');
+  const methods = useMethods();
+  const prefs = me.data?.preferences;
+  // Picked values win; otherwise fall back to the saved preferences, then defaults.
+  const [picked, setPicked] = useState<{ language?: string; fraction?: number; method?: string }>({});
+  const language = picked.language ?? prefs?.language ?? 'auto';
+  const fraction = picked.fraction ?? prefs?.fraction ?? 3;
+  const wanted = picked.method ?? prefs?.method ?? 'studio';
+  const options = styleOptions(methods.data);
+  // A deleted custom method (or one not loaded yet) falls back to studio.
+  const method = options.some(([v]) => v === wanted) ? wanted : 'studio';
   const [bibliographicLine, setBibliographicLine] = useState('');
   const doc = useQuery({
     queryKey: ['documents', id],
@@ -34,7 +37,7 @@ export default function DocumentPage() {
       api<Job>('/jobs', {
         method: 'POST',
         body: JSON.stringify({
-          documentId: id, language, fraction, preset,
+          documentId: id, language, fraction, method,
           ...(bibliographicLine.trim() ? { bibliographicLine: bibliographicLine.trim() } : {}),
         }),
       }),
@@ -62,9 +65,9 @@ export default function DocumentPage() {
         ))}
       </ol>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Select label="Language" value={language} onChange={setLanguage} options={LANGUAGES} />
-        <Select label="Length" value={fraction} onChange={setFraction} options={FRACTIONS} />
-        <Select label="Style" value={preset} onChange={setPreset} options={PRESETS} />
+        <Select label="Language" value={language} onChange={(v) => setPicked({ ...picked, language: v })} options={LANGUAGES} />
+        <Select label="Length" value={fraction} onChange={(v) => setPicked({ ...picked, fraction: v })} options={FRACTIONS} />
+        <Select label="Style" value={method} onChange={(v) => setPicked({ ...picked, method: v })} options={options} />
       </div>
       <label className="block">
         Bibliographic line (optional)

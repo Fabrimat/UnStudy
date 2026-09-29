@@ -171,7 +171,8 @@ describe('library: documents, jobs, ledger, stats', () => {
     await prisma.creditLedger.create({ data: { userId: user.id, type: 'reserve', amount: -3, jobId: done.id, createdAt: new Date('2026-01-02') } });
     await prisma.creditLedger.create({ data: { userId: user.id, type: 'reserve', amount: -4, jobId: failed.id, createdAt: new Date('2026-01-03') } });
 
-    expect((await get(cookie, '/api/me/stats').expect(200)).body).toEqual({ documents: 2, summariesDone: 2, creditsSpent: 8, pagesSummarized: 17 });
+    // creditsSpent comes from the ledger (reserves 3 + 4), not from job.credits.
+    expect((await get(cookie, '/api/me/stats').expect(200)).body).toEqual({ documents: 2, summariesDone: 2, creditsSpent: 7, pagesSummarized: 17 });
 
     const first = (await get(cookie, '/api/me/ledger?pageSize=2').expect(200)).body;
     expect(first).toMatchObject({ total: 3, page: 1, pageSize: 2 });

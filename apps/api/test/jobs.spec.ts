@@ -4,7 +4,7 @@ import { PrismaService } from '../src/prisma.service';
 import { StorageService } from '../src/storage/storage.service';
 import { createApp, loginAs, ORIGIN, resetDb } from './helpers';
 
-const OPTIONS = { language: 'auto', fraction: 3, preset: 'studio' };
+const OPTIONS = { language: 'auto', fraction: 3, method: 'studio' };
 
 describe('jobs and credits', () => {
   let app: INestApplication;
@@ -72,7 +72,7 @@ describe('jobs and credits', () => {
     await start(cookie, { documentId: pending.id, ...OPTIONS }).expect(409);
     await start(bob.cookie, { documentId: doc.id, ...OPTIONS }).expect(404);
     await start(cookie, { documentId: doc.id, ...OPTIONS, fraction: 4 }).expect(400);
-    await start(cookie, { documentId: doc.id, ...OPTIONS, preset: 'poem' }).expect(400);
+    await start(cookie, { documentId: doc.id, ...OPTIONS, method: 'poem' }).expect(400);
     await start(cookie, { documentId: doc.id, ...OPTIONS, bibliographicLine: 'a\nb' }).expect(400);
     const job = await start(cookie, { documentId: doc.id, ...OPTIONS }).expect(201);
     await http().get(`/api/jobs/${job.body.id}`).set('Cookie', bob.cookie).expect(404);

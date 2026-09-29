@@ -41,16 +41,32 @@ enum LedgerType {
 }
 
 model User {
-  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email     String         @unique
-  name      String?
-  createdAt DateTime       @default(now())
-  deletedAt DateTime?
-  accounts  AuthAccount[]
-  sessions  Session[]
-  documents Document[]
-  jobs      Job[]
-  ledger    CreditLedger[]
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email       String          @unique
+  name        String?
+  createdAt   DateTime        @default(now())
+  deletedAt   DateTime?
+  /// { language?, fraction?, method? } defaults for new jobs
+  preferences Json            @default("{}")
+  accounts    AuthAccount[]
+  sessions    Session[]
+  documents   Document[]
+  jobs        Job[]
+  ledger      CreditLedger[]
+  methods     SummaryMethod[]
+}
+
+/// A user's own summary instructions; jobs snapshot them into Job.options, so edits never touch past jobs.
+model SummaryMethod {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  instructions String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model AuthAccount {

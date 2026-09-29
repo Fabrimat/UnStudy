@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
-export type Me = { id: string; email: string; name: string | null; balance: number };
+export type Preferences = { language?: string; fraction?: number; method?: string };
+export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences };
+export type Method = { id: string; name: string; instructions: string; createdAt: string; updatedAt: string };
 export type Chapter = { title: string; pageFrom: number | null; pageTo: number | null; words: number };
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 export type Job = {
@@ -25,6 +27,23 @@ export const qs = (params: Record<string, string | number | boolean | null | und
   const s = u.toString();
   return s ? `?${s}` : '';
 };
+
+export const LANGUAGES = [['auto', 'Same as the document'], ['en', 'English'], ['it', 'Italian'], ['nl', 'Dutch'], ['fr', 'French'], ['de', 'German'], ['es', 'Spanish']] as const;
+export const FRACTIONS = [[3, '1/3 of the original'], [5, '1/5 of the original'], [10, '1/10 of the original']] as const;
+export const PRESETS = [['studio', 'Study summary (continuous prose)'], ['schematico', 'Structured notes (bullet points)'], ['abstract', 'Short abstract']] as const;
+
+// Style select options: optional leading entries, the 3 presets, then the user's custom methods.
+export const styleOptions = (methods: Method[] = [], first: readonly (readonly [string, string])[] = []) =>
+  [...first, ...PRESETS, ...methods.map((m) => [`custom:${m.id}`, m.name] as const)] as readonly (readonly [string, string])[];
+
+// Label of a job's style; old jobs only have options.preset.
+export function methodLabel(options: Record<string, unknown>, methods: Method[] = []) {
+  const id = String(options.method ?? options.preset ?? '');
+  const preset = PRESETS.find(([v]) => v === id);
+  if (preset) return preset[1];
+  if (typeof options.methodName === 'string') return options.methodName;
+  return methods.find((m) => `custom:${m.id}` === id)?.name ?? 'Custom (deleted)';
+}
 
 export const pageCount = (p: Page<unknown>) => Math.max(1, Math.ceil(p.total / p.pageSize));
 
@@ -70,6 +89,8 @@ export async function api<T = void>(path: string, init: RequestInit = {}): Promi
 }
 
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') });
+
+export const useMethods = () => useQuery({ queryKey: ['methods'], queryFn: () => api<Method[]>('/methods') });
 
 export async function uploadFile(file: File) {
   const { document, uploadUrl } = await api<{ document: Doc; uploadUrl: string }>('/documents', {

@@ -8,6 +8,8 @@ import Documents from './pages/Documents';
 import JobPage from './pages/JobPage';
 import Jobs from './pages/Jobs';
 import Login from './pages/Login';
+import Methods from './pages/Methods';
+import Settings from './pages/Settings';
 import Verify from './pages/Verify';
 
 export default function App() {
@@ -20,6 +22,8 @@ export default function App() {
         <Route path="/documents" element={<Documents />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/credits" element={<Credits />} />
+        <Route path="/methods" element={<Methods />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/documents/:id" element={<DocumentPage />} />
         <Route path="/jobs/:id" element={<JobPage />} />
       </Route>
@@ -51,7 +55,7 @@ function Header({ me }: { me: Me }) {
     <header className="flex items-center justify-between border-b pb-3">
       <Link to="/" className="text-lg font-semibold">Summarize</Link>
       <nav className="flex gap-4 text-sm">
-        {([['/', 'Dashboard'], ['/documents', 'Documents'], ['/jobs', 'Summaries'], ['/credits', 'Credits']] as const).map(([to, text]) => (
+        {([['/', 'Dashboard'], ['/documents', 'Documents'], ['/jobs', 'Summaries'], ['/credits', 'Credits'], ['/methods', 'Methods'], ['/settings', 'Settings']] as const).map(([to, text]) => (
           <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'font-semibold underline' : 'hover:underline')}>{text}</NavLink>
         ))}
       </nav>

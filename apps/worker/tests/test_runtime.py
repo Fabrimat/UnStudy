@@ -31,7 +31,7 @@ class BrokenClient:
         raise RuntimeError("LLM down")
 
 
-def seed(conn, storage, pdf: bytes, *, kind="analyze", doc_status="uploaded", credits=0, attempts=0, words=None):
+def seed(conn, storage, pdf: bytes, *, kind="analyze", doc_status="uploaded", credits=0, attempts=0, words=None, options=OPTIONS):
     user = conn.execute('INSERT INTO "User" (email) VALUES (%s) RETURNING id', (f"{uuid4().hex}@x.com",)).fetchone()["id"]
     doc_id = uuid4()
     key = f"users/{user}/documents/{doc_id}.pdf"
@@ -43,7 +43,7 @@ def seed(conn, storage, pdf: bytes, *, kind="analyze", doc_status="uploaded", cr
                  (doc_id, user, key, "t.pdf", len(pdf), doc_status, words))
     job_id = conn.execute('INSERT INTO "Job" ("userId", "documentId", kind, options, credits, attempts) '
                           'VALUES (%s, %s, %s::"JobKind", %s, %s, %s) RETURNING id',
-                          (user, doc_id, kind, Jsonb(OPTIONS if kind == "summarize" else {}), credits, attempts)).fetchone()["id"]
+                          (user, doc_id, kind, Jsonb(options if kind == "summarize" else {}), credits, attempts)).fetchone()["id"]
     if credits:
         conn.execute("""INSERT INTO "CreditLedger" ("userId", type, amount) VALUES (%s, 'grant', %s)""", (user, credits))
         conn.execute("""INSERT INTO "CreditLedger" ("userId", type, amount, "jobId") VALUES (%s, 'reserve', %s, %s)""",
@@ -249,3 +249,31 @@ def test_a_failing_call_recorder_does_not_fail_the_job(conn, storage, settings, 
     _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3)
     run_one(conn, storage, settings, "summarize")
     assert job(conn, job_id)["status"] == "done"
+
+
+def test_custom_method_job_uses_custom_draft_prompt_and_plain_verify(conn, storage, settings):
+    from summarize_worker.prompts import VERIFY_INSTRUCTIONS
+    opts = {"language": "it", "fraction": 5, "method": "custom:abc", "methodName": "Mine",
+            "customInstructions": "SECRET-USER-TEXT in {language}"}
+    _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3, options=opts)
+    client = FakeClient()
+    run_one(conn, storage, settings, "summarize", client)
+    assert job(conn, job_id)["status"] == "done"
+    systems = [c[0]["content"] for c in client.calls]
+    drafts, verifies = systems[0::2], systems[1::2]
+    assert all(d.startswith("SECRET-USER-TEXT in Italian") and "PLATFORM RULES" in d for d in drafts)
+    assert verifies and all(v == VERIFY_INSTRUCTIONS for v in verifies)
+
+
+def test_legacy_method_only_and_custom_without_snapshot(conn, storage, settings, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    _, _, ok_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3,
+                       options={"language": "auto", "fraction": 3, "method": "studio"})
+    run_one(conn, storage, settings, "summarize")
+    assert job(conn, ok_id)["status"] == "done"
+    user, _, bad_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3,
+                           options={"language": "auto", "fraction": 3, "method": "custom:gone"})
+    client = FakeClient()
+    run_one(conn, storage, settings, "summarize", client)
+    run_one(conn, storage, settings, "summarize", client)
+    assert job(conn, bad_id)["status"] == "failed" and balance(conn, user) == 3 and client.calls == []
