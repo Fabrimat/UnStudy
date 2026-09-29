@@ -42,7 +42,8 @@ You need a domain of your own: Resend only sends from verified domains, and the 
 
 1. Add your domain and create the DNS records Resend shows you (SPF and DKIM).
 2. Create an API key with sending access.
-3. SMTP settings: `SMTP_URL=smtps://resend:<RESEND_API_KEY>@smtp.resend.com:465`.
+3. Set `RESEND_API_KEY` on the API: email then goes through Resend's HTTPS API. Railway's Free, Trial and Hobby plans block outbound SMTP, so plain `SMTP_URL` only works on Pro (or on other hosts).
+4. You can use the domain that already receives your mail (for example on Fastmail): Resend only adds a `resend._domainkey` DKIM record and MX/SPF records on the `send.` subdomain, so your inbox is untouched.
 
 ## 3. LLM
 
@@ -80,7 +81,7 @@ Any other OpenAI-compatible provider works too. Check that its terms allow use i
 | `S3_FORCE_PATH_STYLE` | ✓ | ✓ | `false` for Railway buckets, `true` for R2 |
 | `S3_CORS_ORIGIN` | ✓ | | same as `WEB_ORIGIN` |
 | `WEB_ORIGIN` | ✓ | | `https://app.example.com` |
-| `SMTP_URL` | ✓ | | see Resend |
+| `RESEND_API_KEY` | ✓ | | see Resend (or `SMTP_URL` on plans that allow SMTP) |
 | `MAIL_FROM` | ✓ | | `Summarize <login@example.com>` |
 | `GOOGLE_CLIENT_ID` | ✓ | | leave empty to disable Google login |
 | `LLM_BASE_URL` | | ✓ | see LLM |

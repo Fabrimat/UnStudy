@@ -24,7 +24,9 @@ export const config = {
     // comma-separated origins allowed to upload from the browser; when set, applied to the bucket at startup
     corsOrigins: (process.env.S3_CORS_ORIGIN ?? '').split(',').map((o) => o.trim()).filter(Boolean),
   },
-  smtpUrl: need('SMTP_URL'),
+  // RESEND_API_KEY switches email to Resend's HTTPS API; otherwise SMTP_URL is required
+  resendApiKey: process.env.RESEND_API_KEY || null,
+  smtpUrl: process.env.RESEND_API_KEY ? process.env.SMTP_URL || null : need('SMTP_URL'),
   mailFrom: need('MAIL_FROM'),
   google: process.env.GOOGLE_CLIENT_ID
     ? {
