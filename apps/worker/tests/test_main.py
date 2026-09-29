@@ -20,7 +20,7 @@ def test_run_survives_unexpected_exceptions(monkeypatch):
     calls = []
     conns = []
 
-    def fake_claim(conn, kind):
+    def fake_claim(conn, kind, user_only=False):
         calls.append(kind)
         if len(calls) == 1:
             raise RuntimeError("boom")

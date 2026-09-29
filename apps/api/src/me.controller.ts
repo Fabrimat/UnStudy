@@ -14,12 +14,12 @@ export class MeController {
 
   @Get()
   async me(@CurrentUser() user: User) {
-    return { id: user.id, email: user.email, name: user.name, balance: await this.ledger.balance(user.id), preferences: user.preferences };
+    return { id: user.id, email: user.email, name: user.name, balance: await this.ledger.balance(user.id), preferences: user.preferences, role: user.role };
   }
 
   @Patch('preferences')
   async setPreferences(@CurrentUser() user: User, @Body() dto: PreferencesDto) {
-    if (typeof dto.model === 'string' && !config.models.some((m) => m.id === dto.model)) throw new BadRequestException('Unknown model');
+    if (typeof dto.model === 'string' && !config.userModels.some((m) => m.id === dto.model)) throw new BadRequestException('Unknown model');
     return this.prisma.$transaction(async (tx) => {
       // User row lock: two concurrent PATCHes must not lose each other's merge.
       const [row] = await tx.$queryRaw<{ preferences: Prisma.JsonObject }[]>`SELECT preferences FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
@@ -59,7 +59,7 @@ export class MeController {
 
   @Get('stats')
   async stats(@CurrentUser() user: User) {
-    const done = { userId: user.id, kind: 'summarize' as const, status: 'done' as const };
+    const done = { userId: user.id, kind: 'summarize' as const, status: 'done' as const, benchmarkId: null };
     const [documents, summariesDone, spent, pages] = await this.prisma.$transaction([
       this.prisma.document.count({ where: { userId: user.id } }),
       this.prisma.job.count({ where: done }),
@@ -67,7 +67,7 @@ export class MeController {
       this.prisma.creditLedger.aggregate({ where: { userId: user.id, type: { in: ['reserve', 'refund', 'charge'] } }, _sum: { amount: true } }),
       this.prisma.$queryRaw<{ pages: number }[]>`
         SELECT COALESCE(SUM(d.pages), 0)::int AS pages FROM "Job" j JOIN "Document" d ON d.id = j."documentId"
-        WHERE j."userId" = ${user.id}::uuid AND j.kind = 'summarize' AND j.status = 'done'`,
+        WHERE j."userId" = ${user.id}::uuid AND j.kind = 'summarize' AND j.status = 'done' AND j."benchmarkId" IS NULL`,
     ]);
     return { documents, summariesDone, creditsSpent: -(spent._sum.amount ?? 0), pagesSummarized: pages[0].pages };
   }

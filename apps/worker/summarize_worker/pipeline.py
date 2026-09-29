@@ -1,13 +1,29 @@
 """Draft -> fact-check -> format -> checks, one chapter at a time (from legacy riassumi_con_istruzioni)."""
 import logging
+from dataclasses import dataclass
 from typing import Callable
 
 from .checks import fix_format, run_checks
-from .llm import Usage, call_model
+from .config import ModelEntry, Provider
+from .llm import Usage, call_model, limiter_for
 from .prompts import VERIFY_INSTRUCTIONS
 from .text import Chapter
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Phase:
+    """Where one phase (draft or verify) runs: the provider's client, the catalogue entry and its provider."""
+    client: object
+    entry: ModelEntry
+    provider: Provider | None = None  # token parameter and concurrency limit; defaults when absent
+
+
+def _call(phase: Phase, prompt: str, **kw) -> str:
+    p = phase.provider
+    return call_model(phase.client, phase.entry.model, prompt, temperature=phase.entry.temperature,
+                      token_param=p.token_param if p else "max_tokens", limiter=limiter_for(p) if p else None, **kw)
 
 
 def _header(line: str | None, chapter: Chapter) -> str | None:
@@ -20,13 +36,14 @@ def _header(line: str | None, chapter: Chapter) -> str | None:
     return f"{line}, pp. {chapter.page_from}–{chapter.page_to}"
 
 
-def summarize_chapters(client, model: str, chapters: list[Chapter], instructions: str, *, length_percent: int,
-                       bibliographic_line: str | None, verify: bool = True,
+def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str, *, length_percent: int,
+                       bibliographic_line: str | None, verify: Phase | None = None,
                        on_progress: Callable[[int, str], None] | None = None,
                        usage: Usage | None = None,
                        on_call: Callable[[dict], None] | None = None) -> tuple[str, list[str]]:
-    """Returns the whole Markdown and the check warnings. on_progress(percent 0-99, phase)."""
-    phases = 2 if verify else 1
+    """Returns the whole Markdown and the check warnings. verify=None skips the fact-check.
+    on_progress(percent 0-99, phase)."""
+    phases = 2 if verify is not None else 1
     steps = len(chapters) * phases
     summaries, warnings = [], []
 
@@ -38,10 +55,11 @@ def summarize_chapters(client, model: str, chapters: list[Chapter], instructions
                 on_progress(int((step + share) / steps * 100), phase)
         return update
 
-    def recorder(phase: str, chapter: int):
+    def recorder(phase: str, target: Phase, chapter: int):
         if not on_call:
             return None
-        return lambda tin, tout, ms, ok: on_call({"phase": phase, "chapter": chapter, "model": model,
+        return lambda tin, tout, ms, ok: on_call({"phase": phase, "chapter": chapter, "model": target.entry.model,
+                                                  "provider": target.entry.provider, "modelId": target.entry.id,
                                                   "inputTokens": tin, "outputTokens": tout,
                                                   "durationMs": ms, "ok": ok})
 
@@ -55,16 +73,16 @@ def summarize_chapters(client, model: str, chapters: list[Chapter], instructions
         prompt += f"Reading to summarize:\n\n{chapter.text}"
         step = i * phases
         log.info(f"{label}: draft")
-        text = fix_format(call_model(client, model, prompt, system=instructions, usage=usage,
-                                     on_call=recorder("draft", i),
-                                     on_tokens=progress(step, f"{label}: draft", target)), header)
-        if verify:
+        text = fix_format(_call(draft, prompt, system=instructions, usage=usage,
+                                on_call=recorder("draft", draft, i),
+                                on_tokens=progress(step, f"{label}: draft", target)), header)
+        if verify is not None:
             log.info(f"{label}: fact-check")
-            checked = call_model(client, model,
-                                 f"ORIGINAL TEXT:\n\n{chapter.text}\n\n=====\n\nDRAFT SUMMARY:\n\n{text}",
-                                 system=VERIFY_INSTRUCTIONS, usage=usage,
-                                 on_call=recorder("verify", i),
-                                 on_tokens=progress(step + 1, f"{label}: fact-check", len(text.split())))
+            checked = _call(verify,
+                            f"ORIGINAL TEXT:\n\n{chapter.text}\n\n=====\n\nDRAFT SUMMARY:\n\n{text}",
+                            system=VERIFY_INSTRUCTIONS, usage=usage,
+                            on_call=recorder("verify", verify, i),
+                            on_tokens=progress(step + 1, f"{label}: fact-check", len(text.split())))
             # ponytail: a much shorter answer is a refusal or a truncation, so the draft is kept
             if len(checked.split()) > 0.7 * len(text.split()):
                 text = fix_format(checked, header)

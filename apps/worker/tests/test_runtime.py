@@ -64,7 +64,8 @@ def balance(conn, user):
 
 
 def run_one(conn, storage, settings, kind, client=None):
-    process(conn, storage, settings, client or FakeClient(), db.claim(conn, kind))
+    client = client or FakeClient()
+    process(conn, storage, settings, {p.id: client for p in settings.providers}, db.claim(conn, kind))
 
 
 def test_claim_takes_each_job_once(conn, storage, settings):
@@ -153,6 +154,15 @@ def test_stale_jobs_are_requeued_or_refunded(conn, storage, settings):
     assert db.recover_stale(conn) == 2
     assert job(conn, retry_id)["status"] == "queued"
     assert job(conn, dead_id)["status"] == "failed" and balance(conn, user_b) == 2
+
+
+def test_stale_lab_job_fails_without_retry_or_ledger_rows(conn, storage, settings):
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", attempts=1)
+    _as_lab_job(conn, user, doc_id, job_id)
+    conn.execute("""UPDATE "Job" SET status = 'running', "heartbeatAt" = now() - interval '20 minutes'""")
+    assert db.recover_stale(conn) == 1
+    assert job(conn, job_id)["status"] == "failed"
+    assert conn.execute('SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s', (job_id,)).fetchone()["n"] == 0
 
 
 def test_fresh_running_jobs_are_left_alone(conn, storage, settings):
@@ -335,3 +345,58 @@ def test_unknown_model_id_fails_refunded_without_retry_or_calls(conn, storage, s
     user, job_id, client = _summarize(conn, storage, settings, {**OPTIONS, "modelId": "nope", "model": "x"})
     row = job(conn, job_id)
     assert row["status"] == "failed" and row["attempts"] == 1 and balance(conn, user) == 3 and client.calls == []
+
+
+def _as_lab_job(conn, user, doc_id, job_id):
+    """Turns a seeded summarize job into a Lab lane job (credits 0, benchmarkId set, no reserve row)."""
+    bench = conn.execute('INSERT INTO "Benchmark" ("userId", "documentId", options) VALUES (%s, %s, %s) RETURNING id',
+                         (user, doc_id, Jsonb({}))).fetchone()["id"]
+    conn.execute('UPDATE "Job" SET "benchmarkId" = %s WHERE id = %s', (bench, job_id))
+    return bench
+
+
+def test_claim_orders_user_jobs_before_lab_jobs_and_user_only_skips_lab(conn, storage, settings):
+    user, doc_id, lab_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed")
+    _as_lab_job(conn, user, doc_id, lab_id)  # older than the user job below
+    _, _, user_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed")
+    assert db.claim(conn, "summarize", user_only=True)["id"] == user_id
+    assert db.claim(conn, "summarize", user_only=True) is None
+    assert db.claim(conn, "summarize")["id"] == lab_id
+
+
+def test_claim_without_user_only_prefers_user_jobs(conn, storage, settings):
+    user, doc_id, lab_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed")
+    _as_lab_job(conn, user, doc_id, lab_id)
+    _, _, user_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed")
+    assert db.claim(conn, "summarize")["id"] == user_id
+    assert db.claim(conn, "summarize")["id"] == lab_id
+
+
+def test_lab_job_writes_no_ledger_rows_and_records_provider_columns(conn, storage, settings):
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed",
+                                options={**OPTIONS, "phaseModels": {"draft": "alt", "verify": "other-m"}})
+    _as_lab_job(conn, user, doc_id, job_id)
+    run_one(conn, storage, settings, "summarize")
+    assert job(conn, job_id)["status"] == "done" and job(conn, job_id)["model"] == "alt-model"
+    assert conn.execute('SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s', (job_id,)).fetchone()["n"] == 0
+    rows = calls(conn, job_id)
+    assert sorted((r["phase"], r["provider"], r["modelId"], r["model"]) for r in rows if r["chapter"] == 0) == [
+        ("draft", "default", "alt", "alt-model"), ("verify", "other", "other-m", "other-model")]
+
+
+def test_lab_job_without_verify_makes_no_verify_calls(conn, storage, settings):
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed",
+                                options={**OPTIONS, "phaseModels": {"draft": "default", "verify": None}})
+    _as_lab_job(conn, user, doc_id, job_id)
+    run_one(conn, storage, settings, "summarize")
+    assert {r["phase"] for r in calls(conn, job_id)} == {"draft"}
+
+
+def test_lab_job_that_throws_fails_immediately_without_retry(conn, storage, settings, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed")
+    _as_lab_job(conn, user, doc_id, job_id)
+    run_one(conn, storage, settings, "summarize", BrokenClient())
+    row = job(conn, job_id)
+    assert (row["status"], row["attempts"]) == ("failed", 1)
+    assert conn.execute('SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s', (job_id,)).fetchone()["n"] == 0

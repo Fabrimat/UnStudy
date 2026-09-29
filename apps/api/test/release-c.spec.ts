@@ -100,7 +100,7 @@ describe('creditsForJob', () => {
 
 describe('parseModels', () => {
   it('falls back to a single default entry when unset', () => {
-    expect(parseModels(undefined, 'p/m')).toEqual([{ id: 'default', label: 'Default', model: 'p/m', multiplier: 1 }]);
+    expect(parseModels(undefined, 'p/m')).toEqual([{ id: 'default', label: 'Default', model: 'p/m', multiplier: 1, provider: 'default', temperature: 0.4, adminOnly: false }]);
     expect(parseModels('  ', undefined)[0].model).toBe('default');
   });
   it('parses a valid catalogue', () => {

@@ -6,12 +6,15 @@ SUMMARY_ERROR = "Summary generation failed. Your credits have been refunded."
 ANALYZE_ERROR = "Could not read this PDF."
 
 
-def claim(conn, kind: str) -> dict | None:
+def claim(conn, kind: str, user_only: bool = False) -> dict | None:
+    """Next queued job of a kind. user_only skips Lab (benchmark) jobs; summaries claim user jobs first."""
+    where = ' AND "benchmarkId" IS NULL' if user_only else ""
+    order = '("benchmarkId" IS NOT NULL), "createdAt"' if kind == "summarize" else '"createdAt"'
     return conn.execute(
-        """UPDATE "Job" SET status = 'running', attempts = attempts + 1, "heartbeatAt" = now(), phase = 'starting'
-           WHERE id = (SELECT id FROM "Job" WHERE status = 'queued' AND kind = %s::"JobKind"
-                       ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 1)
-           RETURNING *""", (kind,)).fetchone()
+        f"""UPDATE "Job" SET status = 'running', attempts = attempts + 1, "heartbeatAt" = now(), phase = 'starting'
+            WHERE id = (SELECT id FROM "Job" WHERE status = 'queued' AND kind = %s::"JobKind"{where}
+                        ORDER BY {order} FOR UPDATE SKIP LOCKED LIMIT 1)
+            RETURNING *""", (kind,)).fetchone()
 
 
 def progress(conn, job_id, percent: int, phase: str, attempts: int) -> None:
@@ -50,11 +53,11 @@ def reject_document(conn, job: dict, reason: str) -> None:
 
 def record_call(conn, job: dict, rec: dict) -> None:
     """One LlmCall row, written on the autocommit connection so it survives crashes and retries."""
-    conn.execute("""INSERT INTO "LlmCall" ("jobId", attempt, chapter, phase, model, "inputTokens", "outputTokens",
-                                           "durationMs", ok)
-                    VALUES (%s, %s, %s, %s::"LlmPhase", %s, %s, %s, %s, %s)""",
-                 (job["id"], job["attempts"], rec["chapter"], rec["phase"], rec["model"], rec["inputTokens"],
-                  rec["outputTokens"], rec["durationMs"], rec["ok"]))
+    conn.execute("""INSERT INTO "LlmCall" ("jobId", attempt, chapter, phase, model, provider, "modelId",
+                                           "inputTokens", "outputTokens", "durationMs", ok)
+                    VALUES (%s, %s, %s, %s::"LlmPhase", %s, %s, %s, %s, %s, %s, %s)""",
+                 (job["id"], job["attempts"], rec["chapter"], rec["phase"], rec["model"], rec.get("provider"),
+                  rec.get("modelId"), rec["inputTokens"], rec["outputTokens"], rec["durationMs"], rec["ok"]))
 
 
 # Job totals are the sum over every attempt's LlmCall rows (retries cost real tokens too).
@@ -71,7 +74,8 @@ def finish_summary(conn, job: dict, *, md_key: str, docx_key: str, warnings: lis
                       model = %s, "durationMs" = %s
                WHERE id = %s AND status = 'running' AND attempts = %s RETURNING id""",
             (md_key, docx_key, Jsonb(warnings), model, duration_ms, job["id"], job["attempts"])).fetchone()
-        if row:  # the unique (jobId, type) index makes a second charge impossible anyway
+        if row and job.get("benchmarkId") is None:  # Lab jobs write no ledger rows at all
+            # the unique (jobId, type) index makes a second charge impossible anyway
             conn.execute("""INSERT INTO "CreditLedger" ("userId", type, amount, "jobId")
                             VALUES (%s, 'charge', 0, %s) ON CONFLICT DO NOTHING""", (job["userId"], job["id"]))
 
@@ -106,7 +110,7 @@ def fail(conn, job: dict, model: str | None = None) -> None:
 def fail_or_retry(conn, job: dict, model: str | None = None) -> None:
     """After an exception: requeue while attempts remain, else fail (refunding summaries)."""
     with conn.transaction():
-        if job["attempts"] < MAX_ATTEMPTS:
+        if job["attempts"] < MAX_ATTEMPTS and job.get("benchmarkId") is None:  # Lab lanes never retry
             conn.execute("""UPDATE "Job" SET status = 'queued', phase = 'retrying'
                             WHERE id = %s AND status = 'running' AND attempts = %s""", (job["id"], job["attempts"]))
         else:
@@ -116,11 +120,11 @@ def fail_or_retry(conn, job: dict, model: str | None = None) -> None:
 def recover_stale(conn, stale_after: str = "10 minutes") -> int:
     """Jobs whose worker died (no heartbeat): requeue or fail+refund. Returns how many were handled."""
     with conn.transaction():
-        stale = conn.execute("""SELECT id, attempts FROM "Job"
+        stale = conn.execute("""SELECT id, attempts, "benchmarkId" FROM "Job"
                                 WHERE status = 'running' AND "heartbeatAt" < now() - %s::interval
                                 FOR UPDATE SKIP LOCKED""", (stale_after,)).fetchall()
         for row in stale:
-            if row["attempts"] < MAX_ATTEMPTS:
+            if row["attempts"] < MAX_ATTEMPTS and row["benchmarkId"] is None:  # Lab lanes never retry
                 conn.execute("""UPDATE "Job" SET status = 'queued', phase = 'retrying' WHERE id = %s""", (row["id"],))
             else:
                 _fail(conn, row["id"])

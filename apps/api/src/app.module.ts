@@ -4,6 +4,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { CreditsModule } from './credits/credits.module';
@@ -21,6 +22,7 @@ const webDist = join(process.cwd(), '../web/dist');
 @Module({
   imports: [
     PrismaModule,
+    AdminModule,
     AuthModule,
     BillingModule,
     CreditsModule,

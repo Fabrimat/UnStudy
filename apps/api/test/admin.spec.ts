@@ -1,0 +1,187 @@
+import './admin-env';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { PrismaService } from '../src/prisma.service';
+import { StorageService } from '../src/storage/storage.service';
+import { createApp, loginAs, ORIGIN, resetDb } from './helpers';
+
+const SETTINGS = { language: 'auto', lengthPercent: 20, method: 'studio' };
+const LANES = [{ draft: 'fast', verify: 'big' }, { draft: 'lab', verify: null }];
+
+describe('admin lab', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  beforeAll(async () => {
+    app = await createApp();
+    prisma = app.get(PrismaService);
+  });
+  afterAll(() => app.close());
+  beforeEach(() => resetDb(prisma));
+
+  const http = () => request(app.getHttpServer());
+  const post = (cookie: string, url: string, body: object) => http().post(url).set('Origin', ORIGIN).set('Cookie', cookie).send(body);
+  const admin = async (email = 'admin@x.com') => {
+    const a = await loginAs(app, email);
+    await prisma.user.update({ where: { id: a.user.id }, data: { role: 'admin' } });
+    return a;
+  };
+  const doc = (userId: string, words = 2500) =>
+    prisma.document.create({
+      data: {
+        userId, filename: 'reading.pdf', sizeBytes: 100, s3Key: `users/${userId}/documents/x.pdf`, status: 'analyzed', pages: 10, words,
+        chapters: [{ title: 'A', pageFrom: 1, pageTo: 5, words: 1000 }, { title: 'B', pageFrom: 6, pageTo: 10, words: words - 1000 }],
+      },
+    });
+
+  it('returns 404 to anonymous and non-admin callers, 200 to an admin', async () => {
+    const user = await loginAs(app, 'u@x.com');
+    await http().get('/api/admin/models').expect(404);
+    await http().get('/api/admin/models').set('Cookie', user.cookie).expect(404);
+    await http().get('/api/admin/benchmarks').set('Cookie', user.cookie).expect(404);
+    const a = await admin();
+    await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
+    expect((await http().get('/api/me').set('Cookie', a.cookie)).body.role).toBe('admin');
+    expect((await http().get('/api/me').set('Cookie', user.cookie)).body.role).toBe('user');
+  });
+
+  it('reads the role fresh on every request', async () => {
+    const a = await admin();
+    await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
+    await prisma.user.update({ where: { id: a.user.id }, data: { role: 'user' } });
+    await http().get('/api/admin/models').set('Cookie', a.cookie).expect(404);
+  });
+
+  it('lists providers and models without keys', async () => {
+    const a = await admin();
+    const res = await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
+    expect(res.body.providers).toEqual([{ id: 'fake', kind: 'openai', baseUrl: 'fake' }]);
+    expect(res.body.models).toHaveLength(3);
+    expect(res.body.models[0]).toMatchObject({ id: 'lab', adminOnly: true, temperature: null, priceIn: null });
+    expect(JSON.stringify(res.body)).not.toMatch(/ADMIN_SPEC_KEY|sk-should-never-leak/);
+  });
+
+  it('hides adminOnly models from users and rejects them for jobs and preferences', async () => {
+    const { user, cookie } = await loginAs(app, 'u@x.com');
+    await prisma.creditLedger.create({ data: { userId: user.id, type: 'grant', amount: 100 } });
+    const d = await doc(user.id);
+    expect((await http().get('/api/models').set('Cookie', cookie).expect(200)).body.map((m: { id: string }) => m.id)).toEqual(['fast', 'big']);
+    await post(cookie, '/api/jobs', { documentId: d.id, ...SETTINGS, model: 'lab' }).expect(400);
+    await http().patch('/api/me/preferences').set('Origin', ORIGIN).set('Cookie', cookie).send({ model: 'lab' }).expect(400);
+    const job = await post(cookie, '/api/jobs', { documentId: d.id, ...SETTINGS }).expect(201);
+    expect(job.body.options.modelId).toBe('fast'); // first non-adminOnly, not the first entry
+    await post(cookie, '/api/jobs', { documentId: d.id, ...SETTINGS, phaseModels: { draft: 'lab', verify: null } }).expect(400);
+  });
+
+  it('creates one free job per lane with phaseModels, no ledger rows', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, name: 'Run 1', ...SETTINGS, lanes: LANES }).expect(201);
+    expect(res.body.name).toBe('Run 1');
+    expect(res.body.document).toMatchObject({ id: d.id, filename: 'reading.pdf', words: 2500, pages: 10 });
+    expect(res.body.lanes.map((l: { index: number }) => l.index)).toEqual([0, 1]);
+    expect(res.body.lanes[0]).toMatchObject({ draft: { modelId: 'fast', provider: 'fake', model: 'p/fast' }, verify: { modelId: 'big' }, status: 'queued', costUsd: 0 });
+    expect(res.body.lanes[1]).toMatchObject({ draft: { modelId: 'lab' }, verify: null });
+    const jobs = await prisma.job.findMany({ where: { benchmarkId: res.body.id } });
+    expect(jobs).toHaveLength(2);
+    for (const j of jobs) expect(j).toMatchObject({ credits: 0, kind: 'summarize', userId: a.user.id });
+    const byLane = jobs.sort((x, y) => (x.options as { lane: number }).lane - (y.options as { lane: number }).lane);
+    expect(byLane[0].options).toMatchObject({ ...SETTINGS, preset: 'studio', modelId: 'fast', model: 'p/fast', lane: 0, phaseModels: { draft: 'fast', verify: 'big' } });
+    expect(byLane[1].options).toMatchObject({ modelId: 'lab', model: 'p/lab', lane: 1, phaseModels: { draft: 'lab', verify: null } });
+    expect(await prisma.creditLedger.count({ where: { userId: a.user.id } })).toBe(0);
+  });
+
+  it('snapshots custom methods and validates chosen chapters like user jobs', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const m = await prisma.summaryMethod.create({ data: { userId: a.user.id, name: 'Mine', instructions: 'be brief' } });
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, method: `custom:${m.id}`, chapters: [1, 0], lanes: [LANES[0]] }).expect(201);
+    const [job] = await prisma.job.findMany({ where: { benchmarkId: res.body.id } });
+    expect(job.options).toMatchObject({ method: `custom:${m.id}`, methodName: 'Mine', customInstructions: 'be brief', chapters: [0, 1] });
+    expect(res.body.options.customInstructions).toBeUndefined();
+    await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, chapters: [5], lanes: [LANES[0]] }).expect(400);
+  });
+
+  it('validates documents, models and lanes', async () => {
+    const a = await admin();
+    const other = await loginAs(app, 'u@x.com');
+    const mine = await doc(a.user.id);
+    const theirs = await doc(other.user.id);
+    const pending = await prisma.document.create({ data: { userId: a.user.id, filename: 'p.pdf', sizeBytes: 1, s3Key: 'k' } });
+    const create = (body: object) => post(a.cookie, '/api/admin/benchmarks', { ...SETTINGS, lanes: LANES, ...body });
+    await create({ documentId: theirs.id }).expect(404);
+    await create({ documentId: pending.id }).expect(409);
+    await create({ documentId: mine.id, lanes: [{ draft: 'nope', verify: null }] }).expect(400);
+    await create({ documentId: mine.id, lanes: [{ draft: 'fast', verify: 'nope' }] }).expect(400);
+    await create({ documentId: mine.id, lanes: [{ draft: 'fast' }] }).expect(400);
+    await create({ documentId: mine.id, lanes: [] }).expect(400);
+    await create({ documentId: mine.id, lanes: Array(9).fill(LANES[0]) }).expect(400);
+    await create({ documentId: mine.id, name: 'x'.repeat(81) }).expect(400);
+    await create({ documentId: mine.id, lanes: Array(8).fill(LANES[0]) }).expect(201);
+    expect(await prisma.job.count({ where: { userId: a.user.id, benchmarkId: { not: null } } })).toBe(8);
+  });
+
+  it('keeps lab jobs out of /jobs, /me/stats, the document page and the active-summaries cap', async () => {
+    const a = await admin();
+    await prisma.creditLedger.create({ data: { userId: a.user.id, type: 'grant', amount: 100 } });
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: LANES }).expect(201);
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'done' } });
+    expect((await http().get('/api/jobs').set('Cookie', a.cookie).expect(200)).body.total).toBe(0);
+    const stats = (await http().get('/api/me/stats').set('Cookie', a.cookie).expect(200)).body;
+    expect(stats).toMatchObject({ summariesDone: 0, pagesSummarized: 0, creditsSpent: 0 });
+    expect((await http().get(`/api/documents/${d.id}`).set('Cookie', a.cookie).expect(200)).body.jobs).toEqual([]);
+    expect((await http().get('/api/documents?status=summarized').set('Cookie', a.cookie).expect(200)).body.total).toBe(0);
+    // running lab lanes must not use up the 3 normal slots
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'running' } });
+    for (let i = 0; i < 3; i++) await post(a.cookie, '/api/jobs', { documentId: d.id, ...SETTINGS }).expect(201);
+  });
+
+  it('lists only the own benchmarks with lane counters', async () => {
+    const a = await admin();
+    const b = await admin('admin2@x.com');
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: LANES }).expect(201);
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id, options: { path: ['lane'], equals: 0 } }, data: { status: 'done' } });
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id, options: { path: ['lane'], equals: 1 } }, data: { status: 'failed' } });
+    const list = (await http().get('/api/admin/benchmarks').set('Cookie', a.cookie).expect(200)).body;
+    expect(list).toMatchObject({ total: 1, page: 1, items: [{ id: res.body.id, lanes: 2, done: 1, failed: 1, running: 0, document: { filename: 'reading.pdf' } }] });
+    expect((await http().get('/api/admin/benchmarks').set('Cookie', b.cookie).expect(200)).body.total).toBe(0);
+    await http().get(`/api/admin/benchmarks/${res.body.id}`).set('Cookie', b.cookie).expect(404);
+  });
+
+  it('computes usage and cost per lane from LlmCall rows', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: LANES }).expect(201);
+    const [l0, l1] = res.body.lanes;
+    const call = (jobId: string, phase: 'draft' | 'verify', model: string, i: number, o: number, ok = true) =>
+      prisma.llmCall.create({ data: { jobId, attempt: 1, chapter: 0, phase, model, inputTokens: i, outputTokens: o, durationMs: 100, ok } });
+    await call(l0.jobId, 'draft', 'p/fast', 1_000_000, 500_000);
+    await call(l0.jobId, 'draft', 'p/fast', 0, 0, false);
+    await call(l0.jobId, 'verify', 'p/big', 100_000, 10_000);
+    await call(l1.jobId, 'draft', 'p/lab', 1000, 1000);
+    const lanes = (await http().get(`/api/admin/benchmarks/${res.body.id}`).set('Cookie', a.cookie).expect(200)).body.lanes;
+    expect(lanes[0].usage.draft).toEqual({ calls: 2, inputTokens: 1_000_000, outputTokens: 500_000, durationMs: 200, failedCalls: 1 });
+    expect(lanes[0].usage.verify).toMatchObject({ calls: 1, inputTokens: 100_000, outputTokens: 10_000 });
+    expect(lanes[0].costUsd).toBeCloseTo(1 + 0.5 * 2 + 0.1 * 10 + 0.01 * 20); // 3.2
+    expect(lanes[1].costUsd).toBeNull(); // 'lab' has no prices
+  });
+
+  it('refuses to delete a running benchmark, otherwise deletes files and rows', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: LANES }).expect(201);
+    const del = () => http().delete(`/api/admin/benchmarks/${res.body.id}`).set('Origin', ORIGIN).set('Cookie', a.cookie);
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'running' } });
+    await del().expect(409);
+    const key = `users/${a.user.id}/results/lab.md`;
+    const storage = app.get(StorageService);
+    await storage.put(key, Buffer.from('# S\n'), 'text/markdown');
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'done', resultMdKey: key } });
+    await del().expect(204);
+    expect(await storage.head(key)).toBeNull();
+    expect(await prisma.benchmark.count()).toBe(0);
+    expect(await prisma.job.count({ where: { benchmarkId: res.body.id } })).toBe(0);
+    await del().expect(404);
+  });
+});

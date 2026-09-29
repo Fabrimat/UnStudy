@@ -1,13 +1,19 @@
 import socket
 import threading
+import time
 import zipfile
 from io import BytesIO
 from types import SimpleNamespace
 
 from summarize_worker.docx import to_docx
-from summarize_worker.llm import DEFAULT_REPLY, FakeClient, Usage, call_model, make_client
-from summarize_worker.pipeline import summarize_chapters
+from summarize_worker.llm import DEFAULT_REPLY, FakeClient, Usage, call_model, limiter_for, make_client
+from summarize_worker.config import ModelEntry, Provider
+from summarize_worker.pipeline import Phase, summarize_chapters
 from summarize_worker.text import Chapter
+
+
+def _phase(client, model="m", provider="p", temperature=0.4):
+    return Phase(client, ModelEntry(f"{model}-id", model, provider, temperature), Provider(provider, "openai", "fake"))
 
 
 class FlakyClient:
@@ -32,7 +38,7 @@ class FlakyClient:
 def test_each_chapter_gets_a_draft_and_a_fact_check():
     client, progress, usage = FakeClient(), [], Usage()
     chapters = [Chapter("A", 9, 29, "alpha " * 300), Chapter("B", 30, 30, "beta " * 300)]
-    md, warnings = summarize_chapters(client, "m", chapters, "SYSTEM", length_percent=33,
+    md, warnings = summarize_chapters(_phase(client), chapters, "SYSTEM", length_percent=33, verify=_phase(client),
                                       bibliographic_line="**Lijphart** – *Patterns*",
                                       on_progress=lambda p, ph: progress.append((p, ph)), usage=usage)
     assert len(client.calls) == 4
@@ -50,14 +56,14 @@ def test_each_chapter_gets_a_draft_and_a_fact_check():
 
 def test_a_too_short_fact_check_keeps_the_draft():
     client = FakeClient(replies=[DEFAULT_REPLY, "Sorry, I cannot help."])
-    md, _ = summarize_chapters(client, "m", [Chapter("A", None, None, "alpha " * 300)], "S",
+    md, _ = summarize_chapters(_phase(client), [Chapter("A", None, None, "alpha " * 300)], "S", verify=_phase(client),
                                length_percent=33, bibliographic_line="**A** – *B*")
     assert "Fake Summary" in md and "Sorry" not in md
     assert "**A** – *B*\n" in md  # no page range known
 
 
 def test_fake_client_is_selected_by_base_url():
-    assert isinstance(make_client("fake", ""), FakeClient)
+    assert isinstance(make_client(Provider("p", "openai", "fake")), FakeClient)
 
 
 def test_call_model_heartbeats_every_attempt_and_survives_retries(monkeypatch):
@@ -68,6 +74,64 @@ def test_call_model_heartbeats_every_attempt_and_survives_retries(monkeypatch):
     assert text == "hello"
     assert client.calls == 3
     assert heartbeats.count(0) >= 3  # one heartbeat at the start of each of the 3 attempts
+
+
+def test_draft_and_verify_hit_their_own_clients_and_record_who_ran():
+    draft_client, verify_client, records = FakeClient(), FakeClient(), []
+    summarize_chapters(_phase(draft_client, "dm", "pa"), [Chapter("A", None, None, "alpha " * 300)], "S",
+                       length_percent=33, bibliographic_line=None, verify=_phase(verify_client, "vm", "pb"),
+                       on_call=records.append)
+    assert len(draft_client.calls) == 1 and len(verify_client.calls) == 1
+    assert draft_client.kwargs[0]["model"] == "dm" and verify_client.kwargs[0]["model"] == "vm"
+    assert [(r["phase"], r["model"], r["provider"], r["modelId"]) for r in records] == [
+        ("draft", "dm", "pa", "dm-id"), ("verify", "vm", "pb", "vm-id")]
+
+
+def test_no_verify_phase_means_no_fact_check_call():
+    client, progress = FakeClient(), []
+    summarize_chapters(_phase(client), [Chapter("A", None, None, "alpha " * 300)], "S", length_percent=33,
+                       bibliographic_line=None, verify=None, on_progress=lambda p, ph: progress.append(ph))
+    assert len(client.calls) == 1 and not any("fact-check" in ph for ph in progress)
+
+
+def test_call_model_omits_temperature_when_none_and_sends_it_otherwise():
+    client = FakeClient()
+    call_model(client, "m", "p", temperature=None)
+    call_model(client, "m", "p")
+    assert "temperature" not in client.kwargs[0] and client.kwargs[1]["temperature"] == 0.4
+
+
+def test_call_model_token_param():
+    client = FakeClient()
+    call_model(client, "m", "p", max_tokens=7)
+    call_model(client, "m", "p", max_tokens=7, token_param="max_completion_tokens")
+    assert client.kwargs[0]["max_tokens"] == 7 and "max_completion_tokens" not in client.kwargs[0]
+    assert client.kwargs[1]["max_completion_tokens"] == 7 and "max_tokens" not in client.kwargs[1]
+
+
+def test_provider_semaphore_bounds_concurrent_calls_across_threads():
+    limiter = limiter_for(Provider("sem-test", "openai", "fake", max_concurrency=2))
+    assert limiter is limiter_for(Provider("sem-test", "openai", "fake", max_concurrency=2))  # shared per process
+    assert limiter_for(Provider("free", "openai", "fake")) is None
+    lock, state = threading.Lock(), {"now": 0, "peak": 0}
+
+    class Slow(FakeClient):
+        def create(self, **kw):
+            with lock:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            time.sleep(0.05)
+            with lock:
+                state["now"] -= 1
+            return super().create(**kw)
+
+    client = Slow()
+    threads = [threading.Thread(target=call_model, args=(client, "m", "p"), kwargs={"limiter": limiter}) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(client.calls) == 6 and state["peak"] == 2
 
 
 def test_docx_has_real_headings():

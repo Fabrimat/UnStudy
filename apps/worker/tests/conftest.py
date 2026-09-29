@@ -5,7 +5,7 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
-from summarize_worker.config import Settings
+from summarize_worker.config import ModelEntry, Provider, Settings
 from summarize_worker.storage import Storage
 
 TEST_DB = "postgresql://summarize:summarize@localhost:5432/summarize_test_worker"
@@ -24,7 +24,10 @@ def settings():
     return Settings(database_url=TEST_DB, s3_endpoint="http://localhost:9000", s3_region="us-east-1",
                     s3_bucket="summarize-test", s3_key="summarize", s3_secret="summarize-secret",
                     llm_base_url="fake", llm_api_key="", llm_model="fake", ocr_langs=None,
-                    models=(("default", "fake"), ("alt", "alt-model")))
+                    providers=(Provider("default", "openai", "fake"), Provider("other", "openai", "fake", max_concurrency=2)),
+                    models=(ModelEntry("default", "fake", "default"), ModelEntry("alt", "alt-model", "default"),
+                            ModelEntry("other-m", "other-model", "other", temperature=None),
+                            ModelEntry("lab", "lab-model", "other", admin_only=True)))
 
 
 @pytest.fixture

@@ -6,7 +6,8 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "test": "jest",
-    "grant": "ts-node --transpile-only src/cli/grant.ts"
+    "grant": "ts-node --transpile-only src/cli/grant.ts",
+    "role": "ts-node --transpile-only src/cli/role.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",

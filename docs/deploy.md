@@ -57,6 +57,27 @@ LLM_MODEL=claude-sonnet-5
 
 Any other OpenAI-compatible provider works too. Check that its terms allow use in a public service.
 
+### Several providers and models (optional)
+
+`LLM_PROVIDERS` is a JSON list of providers; `LLM_MODELS` entries pick one with `provider` (default: the first). Keys are never in the JSON: `apiKeyEnv` names the environment variable that holds the key, and the worker refuses to start if that variable is missing.
+
+```
+LLM_PROVIDERS=[{"id":"anthropic","baseUrl":"https://api.anthropic.com/v1/","apiKeyEnv":"ANTHROPIC_API_KEY"},{"id":"openai","baseUrl":"https://api.openai.com/v1","apiKeyEnv":"OPENAI_API_KEY","tokenParam":"max_completion_tokens","maxConcurrency":4}]
+LLM_MODELS=[{"id":"sonnet","label":"Sonnet","model":"claude-sonnet-5","multiplier":1,"provider":"anthropic"},{"id":"gpt5","label":"GPT-5","model":"gpt-5","multiplier":2,"provider":"openai","temperature":null,"priceIn":1.25,"priceOut":10,"adminOnly":true}]
+```
+
+`adminOnly` models are hidden from users and only usable in the Lab; at least one model must not be `adminOnly` (the first such entry is the default). `priceIn`/`priceOut` (USD per 1M tokens) only feed the Lab cost estimates. Set `SUMMARIZE_CONCURRENCY` (worker) above 1 to run Lab lanes in parallel; user jobs always go first.
+
+### Admin and the Lab
+
+Admin is a role that only the CLI can set, on a user who has already logged in once. From the API service shell:
+
+```bash
+cd /app && pnpm --filter @summarize/api role you@example.com admin   # or: user, to revoke
+```
+
+An admin sees the Lab in the app: upload your own document, pick several model lanes (draft and optional fact-check model each) and compare summaries, time, tokens and estimated cost side by side. Lab runs are free, never touch credits and never show up in users' lists or stats. Admin routes answer 404 to everyone else.
+
 ## 4. Railway
 
 1. Push the repository to GitHub.

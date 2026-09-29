@@ -17,7 +17,7 @@ export async function createApp(customize: (b: TestingModuleBuilder) => TestingM
 
 export async function resetDb(prisma: PrismaService) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE "CreditLedger", "StripeEvent", "Job", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
+    'TRUNCATE "CreditLedger", "StripeEvent", "Job", "Benchmark", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
   );
 }
 

@@ -10,7 +10,8 @@ import { ListDocumentsDto, MAX_UPLOAD_BYTES } from './documents.dto';
 
 const MAX_UPLOADS_PER_HOUR = 30;
 const withSummaries = {
-  jobs: { where: { kind: 'summarize' as const }, orderBy: { createdAt: 'desc' as const } },
+  // Lab (benchmark) jobs belong to the admin tool, never to the document page.
+  jobs: { where: { kind: 'summarize' as const, benchmarkId: null }, orderBy: { createdAt: 'desc' as const } },
   _count: { select: { jobs: { where: { kind: 'analyze' as const } } } },
 };
 
@@ -85,7 +86,7 @@ export class DocumentsService {
     if (q.status === 'analyzing') where.status = 'uploaded';
     else if (q.status === 'ready') where.status = 'analyzed';
     else if (q.status === 'rejected') where.status = 'rejected';
-    else if (q.status === 'summarized') where.jobs = { some: { kind: 'summarize', status: 'done' } };
+    else if (q.status === 'summarized') where.jobs = { some: { kind: 'summarize', status: 'done', benchmarkId: null } };
     const res = await page(
       this.prisma,
       q,

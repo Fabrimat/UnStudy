@@ -19,6 +19,11 @@ enum DocumentStatus {
   rejected
 }
 
+enum UserRole {
+  user
+  admin
+}
+
 enum JobKind {
   analyze
   summarize
@@ -48,12 +53,15 @@ model User {
   deletedAt   DateTime?
   /// { language?, lengthPercent?, method?, model? } defaults for new jobs (legacy: fraction)
   preferences Json            @default("{}")
+  /// assigned only by the `role` CLI, never from the UI
+  role        UserRole        @default(user)
   accounts    AuthAccount[]
   sessions    Session[]
   documents   Document[]
   jobs        Job[]
   ledger      CreditLedger[]
   methods     SummaryMethod[]
+  benchmarks  Benchmark[]
 }
 
 /// A user's own summary instructions; jobs snapshot them into Job.options, so edits never touch past jobs.
@@ -115,6 +123,7 @@ model Document {
   createdAt     DateTime       @default(now())
   fileDeletedAt DateTime?
   jobs          Job[]
+  benchmarks    Benchmark[]
 
   @@index([userId, createdAt])
 }
@@ -126,7 +135,7 @@ model Job {
   documentId    String         @db.Uuid
   document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
   kind          JobKind
-  /// { language, lengthPercent, method, preset?|customInstructions?, chapters?, extras?, modelId, model, bibliographicLine? } (legacy: fraction)
+  /// { language, lengthPercent, method, preset?|customInstructions?, chapters?, extras?, modelId, model, phaseModels?: { draft, verify | null }, bibliographicLine? } (legacy: fraction)
   options       Json           @default("{}")
   status        JobStatus      @default(queued)
   attempts      Int            @default(0)
@@ -138,7 +147,7 @@ model Job {
   outputTokens  Int            @default(0)
   /// output of the automatic checks; admin only, never sent to the browser
   warnings      Json           @default("[]")
-  /// provider model id actually used (the worker's LLM_MODEL today)
+  /// provider model id actually used (the draft model when phases differ)
   model         String?
   /// wall-clock processing time of the attempt that finished the job
   durationMs    Int?
@@ -148,10 +157,14 @@ model Job {
   error         String?
   createdAt     DateTime       @default(now())
   finishedAt    DateTime?
+  /// set on admin lab runs: one job per lane, free (credits 0), never retried
+  benchmarkId   String?        @db.Uuid
+  benchmark     Benchmark?     @relation(fields: [benchmarkId], references: [id], onDelete: Cascade)
   ledger        CreditLedger[]
   llmCalls      LlmCall[]
 
   @@index([status, kind, createdAt])
+  @@index([benchmarkId])
   @@index([userId, createdAt])
   @@index([userId, kind, createdAt])
 }
@@ -169,7 +182,11 @@ model LlmCall {
   attempt      Int
   chapter      Int
   phase        LlmPhase
+  /// provider model id sent to the API
   model        String
+  /// LLM_PROVIDERS id and LLM_MODELS catalog id (null on rows written before multi-provider)
+  provider     String?
+  modelId      String?
   inputTokens  Int      @default(0)
   outputTokens Int      @default(0)
   durationMs   Int
@@ -178,6 +195,21 @@ model LlmCall {
 
   @@index([jobId])
   @@index([model, createdAt])
+}
+
+/// Admin lab run: the same document and settings summarized once per lane. Admin's own documents only.
+model Benchmark {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId String   @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  /// { name?, language, lengthPercent, method, chapters?, extras?, lanes: [{ draft, verify }] }
+  options    Json
+  createdAt  DateTime @default(now())
+  jobs       Job[]
+
+  @@index([userId, createdAt])
 }
 
 /// Append-only. Balance = SUM(amount). One row per (jobId, type) keeps charge/refund idempotent.

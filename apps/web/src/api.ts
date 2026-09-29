@@ -3,7 +3,29 @@ import { useQuery } from '@tanstack/react-query';
 export type Preferences = { language?: string; lengthPercent?: number; method?: string; model?: string; fraction?: number /* legacy */ };
 export type Model = { id: string; label: string; multiplier: number };
 export type Extra = 'glossary' | 'questions' | 'takeaways';
-export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences };
+export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences; role: 'user' | 'admin' };
+export type AdminProvider = { id: string; kind: string; baseUrl: string };
+export type AdminModel = {
+  id: string; label: string; provider: string; model: string; multiplier: number; temperature: number | null;
+  priceIn: number | null; priceOut: number | null; adminOnly: boolean;
+};
+export type LaneModel = { modelId: string; label: string; provider: string; model: string };
+export type PhaseUsage = { calls: number; inputTokens: number; outputTokens: number; durationMs: number; failedCalls: number };
+export type Lane = {
+  index: number; jobId: string; draft: LaneModel; verify: LaneModel | null;
+  status: JobStatus; progress: number; phase: string; error: string | null;
+  durationMs: number | null; createdAt: string; finishedAt: string | null; warnings: string[];
+  usage: { draft: PhaseUsage; verify: PhaseUsage }; costUsd: number | null;
+};
+export type BenchmarkSummary = {
+  id: string; name: string | null; createdAt: string; document: { id: string; filename: string };
+  lanes: number; done: number; failed: number; running: number;
+};
+export type BenchmarkDetail = {
+  id: string; name: string | null; createdAt: string; options: Record<string, unknown>;
+  document: { id: string; filename: string; words: number | null; pages: number | null }; lanes: Lane[];
+};
+export type LaneSpec = { draft: string; verify: string | null };
 export type Method = { id: string; name: string; instructions: string; createdAt: string; updatedAt: string };
 export type Chapter = { title: string; pageFrom: number | null; pageTo: number | null; words: number };
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
@@ -117,6 +139,14 @@ export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('
 export const useMethods = () => useQuery({ queryKey: ['methods'], queryFn: () => api<Method[]>('/methods') });
 
 export const useModels = () => useQuery({ queryKey: ['models'], queryFn: () => api<Model[]>('/models') });
+
+export const useAdminModels = () =>
+  useQuery({ queryKey: ['admin', 'models'], queryFn: () => api<{ providers: AdminProvider[]; models: AdminModel[] }>('/admin/models') });
+
+export const laneActive = (l: Lane) => l.status === 'queued' || l.status === 'running';
+
+export const priceHint = (m: AdminModel) =>
+  m.priceIn === null && m.priceOut === null ? 'no price' : `$${m.priceIn ?? '?'} in / $${m.priceOut ?? '?'} out per 1M`;
 
 export const usePacks = () => useQuery({ queryKey: ['packs'], queryFn: () => api<BillingPacks>('/billing/packs') });
 

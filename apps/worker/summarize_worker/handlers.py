@@ -4,7 +4,7 @@ import time
 from . import db
 from .docx import to_docx
 from .llm import Usage
-from .pipeline import summarize_chapters
+from .pipeline import Phase, summarize_chapters
 from .prompts import length_percent, render_custom, render_instructions
 from .text import Chapter, clean_pages, extract_pages, inspect_pdf, split_chapters
 
@@ -27,15 +27,25 @@ class UnknownModel(Exception):
     """The job asks for a model id this worker's catalog does not have: fail now, no retry."""
 
 
-def resolve_model(settings, opts: dict) -> str:
-    # The provider model always comes from the worker's own catalog, never from options.model.
-    model_id = opts.get("modelId")
+def _entry(settings, model_id):
+    # Entries always come from the worker's own catalog, never from options.model; adminOnly ids are allowed here.
     if model_id is None:
-        return settings.default_model
+        return settings.default_entry
     try:
-        return dict(settings.models)[model_id]
-    except KeyError:
+        return next(m for m in settings.models if m.id == model_id)
+    except StopIteration:
         raise UnknownModel(f"unknown model id {model_id!r}") from None
+
+
+def resolve_phases(settings, opts: dict):
+    """(draft entry, verify entry or None): phaseModels > modelId > default; verify null skips the fact-check."""
+    phase_models = opts.get("phaseModels")
+    if phase_models is None:
+        draft = _entry(settings, opts.get("modelId"))
+        return draft, draft
+    draft = _entry(settings, phase_models.get("draft") or opts.get("modelId"))
+    verify_id = phase_models.get("verify")
+    return draft, (None if verify_id is None else _entry(settings, verify_id))
 
 
 def load_pdf(storage, doc: dict) -> bytes:
@@ -88,7 +98,7 @@ def handle_analyze(conn, storage, settings, job: dict) -> None:
     log.info(f"analyze job {job['id']} succeeded in {time.monotonic() - start:.1f}s")
 
 
-def handle_summarize(conn, storage, settings, client, job: dict, model: str) -> None:
+def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_entry, verify_entry) -> None:
     start = time.monotonic()
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
@@ -113,11 +123,19 @@ def handle_summarize(conn, storage, settings, client, job: dict, model: str) -> 
     else:  # a custom:<id> method without a snapshot lands here and fails as an unknown preset
         instructions = render_instructions(opts.get("preset") or opts.get("method"), opts["language"], percent, extras)
 
+    def phase(entry) -> Phase | None:
+        if entry is None:
+            return None
+        provider = settings.provider(entry.provider)
+        return Phase(clients[provider.id], entry, provider)
+
+    model = draft_entry.model
+
     def on_call(rec: dict):
         db.record_call(conn, job, rec)  # a raising recorder is swallowed and logged by call_model
 
     markdown, warnings = summarize_chapters(
-        client, model, chapters, instructions,
+        phase(draft_entry), chapters, instructions, verify=phase(verify_entry),
         length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
         on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage,
         on_call=on_call)
@@ -131,15 +149,17 @@ def handle_summarize(conn, storage, settings, client, job: dict, model: str) -> 
             f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
 
-def process(conn, storage, settings, client, job: dict) -> None:
+def process(conn, storage, settings, clients: dict, job: dict) -> None:
+    """clients: provider id -> client, built once per worker thread."""
     model = None
     try:
         if job["kind"] == "summarize":
-            model = resolve_model(settings, job["options"])
+            draft, verify = resolve_phases(settings, job["options"])
+            model = draft.model
         if job["kind"] == "analyze":
             handle_analyze(conn, storage, settings, job)
         else:
-            handle_summarize(conn, storage, settings, client, job, model)
+            handle_summarize(conn, storage, settings, clients, job, draft, verify)
     except UnknownModel:
         log.error(f"job {job['id']} failed (unknown model id, refunded, no retry)")
         db.fail(conn, job, None)
@@ -147,6 +167,10 @@ def process(conn, storage, settings, client, job: dict) -> None:
         log.error(f"job {job['id']} failed (file changed after pricing, refunded, no retry)", exc_info=True)
         db.fail(conn, job, model)
     except Exception:
+        if job.get("benchmarkId") is not None:  # a retried Lab lane is not a measurement
+            log.error(f"benchmark job {job['id']} failed (no retry)", exc_info=True)
+            db.fail(conn, job, model)
+            return
         retry = job["attempts"] < db.MAX_ATTEMPTS
         outcome = "will retry" if retry else "refunded" if job["kind"] == "summarize" else "rejected"
         log.error(f"job {job['id']} failed ({outcome})", exc_info=True)  # user sees db.SUMMARY_ERROR / ANALYZE_ERROR

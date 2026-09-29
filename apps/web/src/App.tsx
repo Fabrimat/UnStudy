@@ -1,6 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router';
 import { api, Me, useMe } from './api';
+import AdminLab from './pages/AdminLab';
+import BenchmarkPage from './pages/BenchmarkPage';
 import Credits from './pages/Credits';
 import Dashboard from './pages/Dashboard';
 import DocumentPage from './pages/DocumentPage';
@@ -26,6 +28,10 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/documents/:id" element={<DocumentPage />} />
         <Route path="/jobs/:id" element={<JobPage />} />
+        <Route element={<RequireAdmin />}>
+          <Route path="/admin" element={<AdminLab />} />
+          <Route path="/admin/benchmarks/:id" element={<BenchmarkPage />} />
+        </Route>
       </Route>
     </Routes>
   );
@@ -43,6 +49,13 @@ function RequireUser() {
   );
 }
 
+// UI convenience only: the server answers 404 to non-admins.
+function RequireAdmin() {
+  const me = useMe();
+  if (me.data?.role !== 'admin') return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
 function Header({ me }: { me: Me }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -58,6 +71,9 @@ function Header({ me }: { me: Me }) {
         {([['/', 'Dashboard'], ['/documents', 'Documents'], ['/jobs', 'Summaries'], ['/credits', 'Credits'], ['/methods', 'Methods'], ['/settings', 'Settings']] as const).map(([to, text]) => (
           <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'font-semibold underline' : 'hover:underline')}>{text}</NavLink>
         ))}
+        {me.role === 'admin' && (
+          <NavLink to="/admin" className={({ isActive }) => (isActive ? 'font-semibold underline' : 'hover:underline')}>Admin</NavLink>
+        )}
       </nav>
       <div className="flex items-center gap-4 text-sm">
         <span data-testid="balance" className="rounded bg-gray-200 px-2 py-1">{me.balance} credits</span>
