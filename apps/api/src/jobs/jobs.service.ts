@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Document, Prisma, User } from '@summarize/db';
-import { config } from '../config';
+import { CatalogService } from '../catalog/catalog.service';
 import { creditsForJob } from '../credits/credits';
 import { LedgerService } from '../credits/ledger.service';
 import { page } from '../pagination';
@@ -38,13 +38,12 @@ export async function resolveSettings(tx: Prisma.TransactionClient, userId: stri
 export class JobsService {
   private logger = new Logger(JobsService.name);
 
-  constructor(private prisma: PrismaService, private ledger: LedgerService, private storage: StorageService) {}
+  constructor(private prisma: PrismaService, private ledger: LedgerService, private storage: StorageService, private catalog: CatalogService) {}
 
   async create(user: User, dto: CreateJobDto) {
     const { documentId, model: modelId } = dto;
     // adminOnly models are indistinguishable from unknown ones for users.
-    const entry = modelId === undefined ? config.userModels[0] : config.userModels.find((m) => m.id === modelId);
-    if (!entry) throw new BadRequestException('Unknown model');
+    const entry = await this.catalog.userModel(modelId);
     let customChars = 0;
     const job = await this.prisma.$transaction(async (tx) => {
       // Row lock on the user serialises concurrent starts, so the balance check below cannot race.
@@ -74,7 +73,7 @@ export class JobsService {
   }
 
   async get(user: User, id: string) {
-    return toJobDto(await this.findOwned(user, id));
+    return toJobDto(await this.find(id, user.id));
   }
 
   async list(user: User, q: ListJobsDto) {
@@ -97,31 +96,32 @@ export class JobsService {
     return { ...res, items: res.items.map((j) => ({ ...toJobDto(j), document: j.document })) };
   }
 
-  async content(user: User, id: string) {
-    const job = await this.findOwned(user, id);
+  // userId undefined = admin path, no ownership filter.
+  async content(id: string, userId?: string) {
+    const job = await this.find(id, userId);
     if (job.status !== 'done' || !job.resultMdKey) throw new NotFoundException('Summary not ready');
     return (await this.storage.get(job.resultMdKey)).toString('utf-8');
   }
 
   async remove(user: User, id: string) {
-    const job = await this.findOwned(user, id);
+    const job = await this.find(id, user.id);
     if (job.status !== 'done' && job.status !== 'failed') throw new ConflictException('Summary is still in progress');
     await this.storage.delete([job.resultMdKey, job.resultDocxKey].filter((k): k is string => !!k));
     await this.prisma.job.delete({ where: { id } });
     this.logger.log(`Job deleted: user ${user.id}, job ${id}`);
   }
 
-  async downloadUrl(user: User, id: string, format: string) {
+  async downloadUrl(id: string, format: string, userId?: string) {
     if (format !== 'md' && format !== 'docx') throw new BadRequestException('format must be md or docx');
-    const job = await this.findOwned(user, id);
+    const job = await this.find(id, userId);
     const key = format === 'md' ? job.resultMdKey : job.resultDocxKey;
     if (job.status !== 'done' || !key) throw new NotFoundException('Summary not ready');
     const base = job.document.filename.replace(/\.pdf$/i, '');
     return { url: await this.storage.downloadUrl(key, `${base} - Summary.${format}`) };
   }
 
-  private async findOwned(user: User, id: string) {
-    const job = await this.prisma.job.findFirst({ where: { id, userId: user.id }, include: { document: true } });
+  async find(id: string, userId?: string) {
+    const job = await this.prisma.job.findFirst({ where: { id, ...(userId && { userId }) }, include: { document: true } });
     if (!job) throw new NotFoundException('Job not found');
     return job;
   }

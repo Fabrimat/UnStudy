@@ -32,7 +32,7 @@ function NewRun() {
   const qc = useQueryClient();
   const methods = useMethods();
   const admin = useAdminModels();
-  const models = admin.data?.models ?? [];
+  const models = (admin.data?.models ?? []).filter((m) => m.enabled);
   const [docQ, setDocQ] = useState('');
   const docs = useQuery({
     queryKey: ['documents', 'list', 'lab', 'ready', docQ],

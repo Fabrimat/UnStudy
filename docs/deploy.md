@@ -66,6 +66,8 @@ LLM_PROVIDERS=[{"id":"anthropic","baseUrl":"https://api.anthropic.com/v1/","apiK
 LLM_MODELS=[{"id":"sonnet","label":"Sonnet","model":"claude-sonnet-5","multiplier":1,"provider":"anthropic"},{"id":"gpt5","label":"GPT-5","model":"gpt-5","multiplier":2,"provider":"openai","temperature":null,"priceIn":1.25,"priceOut":10,"adminOnly":true}]
 ```
 
+`LLM_MODELS` is only the **seed** of the model catalogue: the first time the API reads an empty catalogue it copies these entries into the database. After that boot, edit models (label, provider, multiplier, prices, enable/disable, order) in **Admin → Modelli**; changing `LLM_MODELS` no longer has any effect. Providers and their keys stay in the environment. The worker reads the catalogue from the database at each job start and falls back to `LLM_MODELS` only while the table is empty. Models are never deleted, only disabled (queued jobs still run on a disabled model).
+
 `adminOnly` models are hidden from users and only usable in the Lab; at least one model must not be `adminOnly` (the first such entry is the default). `priceIn`/`priceOut` (USD per 1M tokens) only feed the Lab cost estimates. Set `SUMMARIZE_CONCURRENCY` (worker) above 1 to run Lab lanes in parallel; user jobs always go first.
 
 ### Admin and the Lab
@@ -107,8 +109,8 @@ An admin sees the Lab in the app: upload your own document, pick several model l
 | `GOOGLE_CLIENT_ID` | ✓ | | leave empty to disable Google login |
 | `LLM_BASE_URL` | | ✓ | see LLM |
 | `LLM_API_KEY` | | ✓ | see LLM |
-| `LLM_MODEL` | | ✓ | see LLM |
-| `LLM_MODELS` | ✓ | ✓ | optional model catalogue (JSON, first = default); set it **identically on both services**, otherwise every new summary fails and is refunded |
+| `LLM_MODEL` | ✓ | ✓ | see LLM; required when `LLM_MODELS` is not set |
+| `LLM_MODELS` | ✓ | ✓ | seed of the model catalogue (JSON, first = default); after the first API boot models are edited in Admin → Modelli and this variable is ignored. While the database catalogue is empty set it identically on both services. **Set it (or at least `LLM_MODEL`) on the API before the first deploy of the admin console release: that first boot seeds the database from it, once** |
 | `LOG_LEVEL` | ✓ | ✓ | `info` (optional; `debug`, `warn`, `error`) |
 | `STRIPE_SECRET_KEY` | ✓ | | optional; leave empty to disable payments (see Stripe payments) |
 | `STRIPE_WEBHOOK_SECRET` | ✓ | | `whsec_...`, required when `STRIPE_SECRET_KEY` is set |

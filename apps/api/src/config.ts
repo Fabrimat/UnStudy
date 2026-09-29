@@ -84,7 +84,9 @@ export type ModelEntry = {
 // Set but invalid -> throws. Default for user jobs = first non-adminOnly entry (config.userModels[0]).
 export function parseModels(raw: string | undefined, fallbackModel: string | undefined, providers: { id: string }[] = [{ id: 'default' }]): ModelEntry[] {
   if (!raw?.trim()) {
-    return [{ id: 'default', label: 'Default', model: fallbackModel || 'default', multiplier: 1, provider: providers[0].id, temperature: 0.4, adminOnly: false }];
+    // The API seeds the DB catalogue from this once, so a made-up model id would break every job: fail fast (like the worker).
+    if (!fallbackModel) throw new Error('LLM_MODEL is required when LLM_MODELS is not set');
+    return [{ id: 'default', label: 'Default', model: fallbackModel, multiplier: 1, provider: providers[0].id, temperature: 0.4, adminOnly: false }];
   }
   let list: unknown;
   try {

@@ -27,7 +27,7 @@ export default function BenchmarkPage() {
     onSuccess: () => {
       qc.removeQueries({ queryKey: ['admin', 'benchmarks', id] });
       qc.invalidateQueries({ queryKey: ['admin', 'benchmarks'] });
-      navigate('/admin');
+      navigate('/admin/lab');
     },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) qc.invalidateQueries({ queryKey: ['admin', 'benchmarks', id] });
@@ -47,7 +47,7 @@ export default function BenchmarkPage() {
     <section className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link to="/admin" className="text-sm underline">← Lab</Link>
+          <Link to="/admin/lab" className="text-sm underline">← Lab</Link>
           <h1 className="text-xl font-semibold">{b.name || 'Untitled run'}</h1>
           <p className="text-sm text-gray-600">
             <Link className="underline" to={`/documents/${b.document.id}`}>{b.document.filename}</Link>

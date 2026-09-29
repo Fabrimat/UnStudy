@@ -33,7 +33,7 @@ def settings():
 @pytest.fixture
 def conn(migrated, settings):
     c = psycopg.connect(settings.database_url, autocommit=True, row_factory=dict_row)
-    c.execute('TRUNCATE "CreditLedger", "Job", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE')
+    c.execute('TRUNCATE "CreditLedger", "Job", "Document", "Session", "AuthAccount", "MagicLinkToken", "User", "ModelPreset" CASCADE')
     yield c
     c.close()
 

@@ -27,25 +27,27 @@ class UnknownModel(Exception):
     """The job asks for a model id this worker's catalog does not have: fail now, no retry."""
 
 
-def _entry(settings, model_id):
-    # Entries always come from the worker's own catalog, never from options.model; adminOnly ids are allowed here.
-    if model_id is None:
-        return settings.default_entry
+def _entry(models, model_id):
+    # Entries always come from the resolved catalog, never from options.model; adminOnly ids are allowed here.
     try:
-        return next(m for m in settings.models if m.id == model_id)
+        if model_id is None:
+            return next(m for m in models if not m.admin_only)  # user-job default: first non-adminOnly
+        return next(m for m in models if m.id == model_id)
     except StopIteration:
         raise UnknownModel(f"unknown model id {model_id!r}") from None
 
 
-def resolve_phases(settings, opts: dict):
-    """(draft entry, verify entry or None): phaseModels > modelId > default; verify null skips the fact-check."""
+def resolve_phases(settings, opts: dict, models=None):
+    """(draft entry, verify entry or None): phaseModels > modelId > default; verify null skips the fact-check.
+    models: catalog resolved by the run loop (DB, else env); defaults to settings.models."""
+    models = settings.models if models is None else models
     phase_models = opts.get("phaseModels")
     if phase_models is None:
-        draft = _entry(settings, opts.get("modelId"))
+        draft = _entry(models, opts.get("modelId"))
         return draft, draft
-    draft = _entry(settings, phase_models.get("draft") or opts.get("modelId"))
+    draft = _entry(models, phase_models.get("draft") or opts.get("modelId"))
     verify_id = phase_models.get("verify")
-    return draft, (None if verify_id is None else _entry(settings, verify_id))
+    return draft, (None if verify_id is None else _entry(models, verify_id))
 
 
 def load_pdf(storage, doc: dict) -> bytes:
@@ -149,12 +151,12 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
             f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
 
-def process(conn, storage, settings, clients: dict, job: dict) -> None:
-    """clients: provider id -> client, built once per worker thread."""
+def process(conn, storage, settings, clients: dict, job: dict, models=None) -> None:
+    """clients: provider id -> client, built once per worker thread. models: catalog loaded before the claim."""
     model = None
     try:
         if job["kind"] == "summarize":
-            draft, verify = resolve_phases(settings, job["options"])
+            draft, verify = resolve_phases(settings, job["options"], models)
             model = draft.model
         if job["kind"] == "analyze":
             handle_analyze(conn, storage, settings, job)

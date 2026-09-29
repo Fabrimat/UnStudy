@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 export type Preferences = { language?: string; lengthPercent?: number; method?: string; model?: string; fraction?: number /* legacy */ };
 export type Model = { id: string; label: string; multiplier: number };
@@ -7,7 +7,7 @@ export type Me = { id: string; email: string; name: string | null; balance: numb
 export type AdminProvider = { id: string; kind: string; baseUrl: string };
 export type AdminModel = {
   id: string; label: string; provider: string; model: string; multiplier: number; temperature: number | null;
-  priceIn: number | null; priceOut: number | null; adminOnly: boolean;
+  priceIn: number | null; priceOut: number | null; adminOnly: boolean; enabled: boolean; position: number;
 };
 export type LaneModel = { modelId: string; label: string; provider: string; model: string };
 export type PhaseUsage = { calls: number; inputTokens: number; outputTokens: number; durationMs: number; failedCalls: number };
@@ -142,6 +142,96 @@ export const useModels = () => useQuery({ queryKey: ['models'], queryFn: () => a
 
 export const useAdminModels = () =>
   useQuery({ queryKey: ['admin', 'models'], queryFn: () => api<{ providers: AdminProvider[]; models: AdminModel[] }>('/admin/models') });
+
+export type AdminUser = {
+  id: string; email: string; name: string | null; role: 'user' | 'admin'; createdAt: string; deletedAt: string | null;
+  balance: number; documents: number; jobs: number; lastActiveAt: string | null;
+};
+export type AdminLedgerEntry = { id: string; type: string; amount: number; createdAt: string; jobId: string | null; note: string | null; adminEmail: string | null };
+export type AdminUserDetail = AdminUser & { preferences: Preferences; ledger: AdminLedgerEntry[] };
+export type AdminDoc = {
+  id: string; filename: string; status: Doc['status']; sizeBytes: number; pages: number | null; words: number | null; usedOcr: boolean;
+  createdAt: string; fileDeletedAt: string | null; rejectReason: string | null; user: { id: string; email: string }; jobs: number;
+};
+export type AdminJob = {
+  id: string; kind: 'analyze' | 'summarize'; status: JobStatus; phase: string; progress: number; credits: number; attempts: number;
+  modelId: string | null; model: string | null; createdAt: string; finishedAt: string | null; durationMs: number | null;
+  error: string | null; benchmarkId: string | null; user: { id: string; email: string }; document: { id: string; filename: string };
+};
+export type AdminJobDetail = AdminJob & {
+  options: Record<string, unknown>; warnings: string[]; inputTokens: number | null; outputTokens: number | null;
+  usage: unknown; costUsd: number | null; ledger: { id: string; type: string; amount: number; createdAt: string; note?: string | null }[];
+};
+export type AdminDocDetail = Omit<AdminDoc, 'jobs'> & { chapters: Chapter[] | null; jobs: AdminJob[] };
+export type StatsDay = {
+  day: string; signups: number; documents: number; jobsDone: number; jobsFailed: number;
+  creditsSpent: number; creditsPurchased: number; inputTokens: number; outputTokens: number;
+};
+export type AdminStats = {
+  totals: {
+    users: number; activeUsers30d: number; documents: number; jobs: Record<JobStatus, number>;
+    creditsPurchased: number; creditsGranted: number; creditsRevoked: number; creditsSpent: number; creditsOutstanding: number;
+    llm: { calls: number; failedCalls: number; inputTokens: number; outputTokens: number; costUsd: number | null };
+  };
+  series: StatsDay[];
+  models: { modelId: string; provider: string; calls: number; failedCalls: number; inputTokens: number; outputTokens: number; avgDurationMs: number | null; costUsd: number | null }[];
+};
+export type AdminModelInput = Partial<Omit<AdminModel, 'id'>>;
+
+export const useAdminStats = (days: number) =>
+  useQuery({ queryKey: ['admin', 'stats', days], queryFn: () => api<AdminStats>(`/admin/stats${qs({ days })}`) });
+export const useAdminUsers = (q: string, page: number) =>
+  useQuery({ queryKey: ['admin', 'users', 'list', q, page], queryFn: () => api<Page<AdminUser>>(`/admin/users${qs({ q, page })}`) });
+export const useAdminUser = (id?: string) =>
+  useQuery({ queryKey: ['admin', 'users', id], queryFn: () => api<AdminUserDetail>(`/admin/users/${id}`), enabled: !!id });
+export const useAdminDocs = (f: { q: string; status: string; userId: string; page: number }) =>
+  useQuery({ queryKey: ['admin', 'documents', 'list', f], queryFn: () => api<Page<AdminDoc>>(`/admin/documents${qs(f)}`) });
+export const useAdminDoc = (id?: string) =>
+  useQuery({ queryKey: ['admin', 'documents', id], queryFn: () => api<AdminDocDetail>(`/admin/documents/${id}`), enabled: !!id });
+export const useAdminJobs = (f: { status: string; kind: string; lab: string; userId: string; documentId: string; page: number }) =>
+  useQuery({ queryKey: ['admin', 'jobs', 'list', f], queryFn: () => api<Page<AdminJob>>(`/admin/jobs${qs(f)}`) });
+export const useAdminJob = (id?: string) =>
+  useQuery({ queryKey: ['admin', 'jobs', id], queryFn: () => api<AdminJobDetail>(`/admin/jobs/${id}`), enabled: !!id });
+
+// Opens a presigned download URL returned by the admin endpoints (same approach as JobPage).
+export async function openAdminDownload(path: string) {
+  const { url } = await api<{ url: string }>(path);
+  window.location.href = url;
+}
+
+export function useAdminCredits(userId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { amount: number; note: string }) =>
+      api<{ balance: number }>(`/admin/users/${userId}/credits`, { method: 'POST', body: JSON.stringify(v) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
+
+const invalidateModels = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['admin', 'models'] });
+  qc.invalidateQueries({ queryKey: ['models'] });
+  qc.invalidateQueries({ queryKey: ['me'] });
+};
+
+export function useSaveAdminModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, create, ...body }: AdminModelInput & { id: string; create?: boolean }) =>
+      create
+        ? api<AdminModel>('/admin/models', { method: 'POST', body: JSON.stringify({ id, ...body }) })
+        : api<AdminModel>(`/admin/models/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => invalidateModels(qc),
+  });
+}
+
+export function useReorderAdminModels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api('/admin/models/order', { method: 'POST', body: JSON.stringify({ ids }) }),
+    onSuccess: () => invalidateModels(qc),
+  });
+}
 
 export const laneActive = (l: Lane) => l.status === 'queued' || l.status === 'running';
 

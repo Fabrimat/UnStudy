@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router';
 import { api, Me, useMe } from './api';
 import AdminLab from './pages/AdminLab';
+import { AdminDocumentPage, AdminDocuments, AdminJobPage, AdminJobs, AdminLayout, AdminModels, AdminOverview, AdminUserPage, AdminUsers } from './pages/admin';
 import BenchmarkPage from './pages/BenchmarkPage';
 import Credits from './pages/Credits';
 import Dashboard from './pages/Dashboard';
@@ -29,8 +30,18 @@ export default function App() {
         <Route path="/documents/:id" element={<DocumentPage />} />
         <Route path="/jobs/:id" element={<JobPage />} />
         <Route element={<RequireAdmin />}>
-          <Route path="/admin" element={<AdminLab />} />
-          <Route path="/admin/benchmarks/:id" element={<BenchmarkPage />} />
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminOverview />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="users/:id" element={<AdminUserPage />} />
+            <Route path="documents" element={<AdminDocuments />} />
+            <Route path="documents/:id" element={<AdminDocumentPage />} />
+            <Route path="jobs" element={<AdminJobs />} />
+            <Route path="jobs/:id" element={<AdminJobPage />} />
+            <Route path="models" element={<AdminModels />} />
+            <Route path="lab" element={<AdminLab />} />
+            <Route path="benchmarks/:id" element={<BenchmarkPage />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

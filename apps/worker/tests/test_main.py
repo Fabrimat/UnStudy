@@ -33,6 +33,7 @@ def test_run_survives_unexpected_exceptions(monkeypatch):
         return c
 
     monkeypatch.setattr(main_mod.db, "claim", fake_claim)
+    monkeypatch.setattr(main_mod.db, "load_models", lambda conn, settings: settings.models)
     monkeypatch.setattr(main_mod.db, "recover_stale", lambda conn: 0)
     monkeypatch.setattr(main_mod.psycopg, "connect", fake_connect)
 

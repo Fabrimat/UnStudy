@@ -41,12 +41,13 @@ def run(kind: str, settings: Settings, stop: threading.Event, user_only: bool = 
                 if n := db.recover_stale(conn):
                     log.info(f"recovered {n} stale job(s)")
                 last_recovery = time.time()
+            models = db.load_models(conn, settings)  # before the claim: an error here never strands a running job
             job = db.claim(conn, kind, user_only=user_only)
             if job is None:
                 stop.wait(POLL_SECONDS)
                 continue
             log.info(f"{kind}: job {job['id']} claimed (doc {job['documentId']}, attempt {job['attempts']})")
-            process(conn, storage, settings, clients, job)
+            process(conn, storage, settings, clients, job, models)
         except psycopg.OperationalError:
             log.error("database connection lost, will reconnect", exc_info=True)  # database restarted
             conn = None

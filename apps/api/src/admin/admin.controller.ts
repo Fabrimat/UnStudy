@@ -1,25 +1,36 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { User } from '@summarize/db';
 import { CurrentUser } from '../auth/session.guard';
-import { config } from '../config';
 import { AdminGuard } from './admin.guard';
-import { CreateBenchmarkDto, ListBenchmarksDto } from './admin.dto';
+import { CreateBenchmarkDto, CreateModelDto, ListBenchmarksDto, ModelOrderDto, UpdateModelDto } from './admin.dto';
 import { BenchmarksService } from './benchmarks.service';
+import { ModelsAdminService } from './models.service';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private benchmarks: BenchmarksService) {}
+  constructor(private benchmarks: BenchmarksService, private catalog: ModelsAdminService) {}
 
-  // Never includes apiKeyEnv or any key.
   @Get('models')
   models() {
-    return {
-      providers: config.providers.map(({ id, kind, baseUrl }) => ({ id, kind, baseUrl })),
-      models: config.models.map(({ id, label, provider, model, multiplier, temperature, priceIn, priceOut, adminOnly }) => ({
-        id, label, provider, model, multiplier, temperature, priceIn: priceIn ?? null, priceOut: priceOut ?? null, adminOnly,
-      })),
-    };
+    return this.catalog.list();
+  }
+
+  @Post('models')
+  createModel(@CurrentUser() user: User, @Body() dto: CreateModelDto) {
+    return this.catalog.create(user, dto);
+  }
+
+  // before :id so "order" is never read as an id
+  @Post('models/order')
+  @HttpCode(200)
+  orderModels(@CurrentUser() user: User, @Body() dto: ModelOrderDto) {
+    return this.catalog.order(user, dto.ids);
+  }
+
+  @Patch('models/:id')
+  updateModel(@CurrentUser() user: User, @Param('id') id: string, @Body() dto: UpdateModelDto) {
+    return this.catalog.update(user, id, dto);
   }
 
   @Post('benchmarks')

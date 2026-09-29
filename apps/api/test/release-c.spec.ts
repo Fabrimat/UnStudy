@@ -101,7 +101,8 @@ describe('creditsForJob', () => {
 describe('parseModels', () => {
   it('falls back to a single default entry when unset', () => {
     expect(parseModels(undefined, 'p/m')).toEqual([{ id: 'default', label: 'Default', model: 'p/m', multiplier: 1, provider: 'default', temperature: 0.4, adminOnly: false }]);
-    expect(parseModels('  ', undefined)[0].model).toBe('default');
+    expect(() => parseModels(undefined, undefined)).toThrow('LLM_MODEL is required');
+    expect(parseModels('  ', 'p/x')[0].model).toBe('p/x');
   });
   it('parses a valid catalogue', () => {
     expect(parseModels(JSON.stringify([entry, { ...entry, id: 'big', multiplier: 2.5 }]), undefined)).toHaveLength(2);

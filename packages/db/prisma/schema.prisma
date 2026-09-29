@@ -62,6 +62,8 @@ model User {
   ledger      CreditLedger[]
   methods     SummaryMethod[]
   benchmarks  Benchmark[]
+  /// grant/revoke rows this admin wrote from the admin UI
+  adminLedger CreditLedger[] @relation("LedgerAdmin")
 }
 
 /// A user's own summary instructions; jobs snapshot them into Job.options, so edits never touch past jobs.
@@ -145,7 +147,7 @@ model Job {
   credits       Int            @default(0)
   inputTokens   Int            @default(0)
   outputTokens  Int            @default(0)
-  /// output of the automatic checks; admin only, never sent to the browser
+  /// output of the automatic checks; shown to admins only, never to the job's owner
   warnings      Json           @default("[]")
   /// provider model id actually used (the draft model when phases differ)
   model         String?
@@ -221,6 +223,10 @@ model CreditLedger {
   amount        Int
   jobId         String?    @db.Uuid
   job           Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  /// set on grant/revoke rows written from the admin UI (CLI rows leave it null)
+  adminId       String?    @db.Uuid
+  admin         User?      @relation("LedgerAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  note          String?
   stripeEventId String?
   paymentIntentId String?
   createdAt     DateTime   @default(now())
@@ -235,4 +241,26 @@ model StripeEvent {
   id          String   @id
   type        String
   processedAt DateTime @default(now())
+}
+
+/// Editable model catalog. Empty table = the LLM_MODELS env catalog (the API seeds it on first read).
+/// Never hard-deleted (jobs and LlmCall reference ids): enabled=false hides it, the worker still resolves it.
+model ModelPreset {
+  id          String   @id
+  label       String
+  /// an LLM_PROVIDERS id (keys stay in env)
+  provider    String
+  /// provider model id
+  model       String
+  multiplier  Float
+  /// null = do not send temperature
+  temperature Float?
+  /// USD per 1M tokens, Lab/stats cost estimates only
+  priceIn     Float?
+  priceOut    Float?
+  adminOnly   Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

@@ -1,9 +1,17 @@
 """Job queue on the Prisma-owned schema. Identifiers are quoted: Prisma keeps PascalCase/camelCase names."""
+import logging
+
+import psycopg.errors
 from psycopg.types.json import Jsonb
+
+from .config import ModelEntry
 
 MAX_ATTEMPTS = 2
 SUMMARY_ERROR = "Summary generation failed. Your credits have been refunded."
 ANALYZE_ERROR = "Could not read this PDF."
+
+log = logging.getLogger(__name__)
+_warned_missing_table = False
 
 
 def claim(conn, kind: str, user_only: bool = False) -> dict | None:
@@ -129,3 +137,27 @@ def recover_stale(conn, stale_after: str = "10 minutes") -> int:
             else:
                 _fail(conn, row["id"])
     return len(stale)
+
+
+def models_from_rows(rows, provider_ids, fallback: tuple[ModelEntry, ...]) -> tuple[ModelEntry, ...]:
+    """ModelPreset rows -> catalog; no rows: env fallback. `enabled` is ignored on purpose (queued jobs keep working).
+    Rows of a provider this worker lacks are dropped, so resolving their id is UnknownModel."""
+    if not rows:
+        return fallback
+    return tuple(ModelEntry(r["id"], r["model"], r["provider"], r["temperature"], r["adminOnly"])
+                 for r in rows if r["provider"] in provider_ids)
+
+
+def load_models(conn, settings) -> tuple[ModelEntry, ...]:
+    """Catalog for the next job: one SELECT, env fallback when the table is empty or not migrated yet."""
+    global _warned_missing_table
+    try:
+        rows = conn.execute('SELECT id, model, provider, temperature, "adminOnly" FROM "ModelPreset" '
+                            'ORDER BY position, id').fetchall()
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()  # no-op under autocommit; keeps a non-autocommit connection usable
+        if not _warned_missing_table:
+            _warned_missing_table = True
+            log.warning('table "ModelPreset" is missing (API migration not applied yet), using LLM_MODELS')
+        return settings.models
+    return models_from_rows(rows, {p.id for p in settings.providers}, settings.models)

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { AppModule } from '../src/app.module';
 import { AuthService } from '../src/auth/auth.service';
+import { invalidateCatalog } from '../src/catalog/catalog.service';
 import { PrismaService } from '../src/prisma.service';
 import { setupApp } from '../src/setup';
 
@@ -17,8 +18,9 @@ export async function createApp(customize: (b: TestingModuleBuilder) => TestingM
 
 export async function resetDb(prisma: PrismaService) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE "CreditLedger", "StripeEvent", "Job", "Benchmark", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
+    'TRUNCATE "CreditLedger", "StripeEvent", "ModelPreset", "Job", "Benchmark", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
   );
+  invalidateCatalog(); // the 5 s catalog cache must not outlive the truncated table
 }
 
 export async function loginAs(app: INestApplication, email: string) {

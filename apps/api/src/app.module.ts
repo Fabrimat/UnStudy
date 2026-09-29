@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { CreditsModule } from './credits/credits.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
@@ -22,6 +23,7 @@ const webDist = join(process.cwd(), '../web/dist');
 @Module({
   imports: [
     PrismaModule,
+    CatalogModule,
     AdminModule,
     AuthModule,
     BillingModule,

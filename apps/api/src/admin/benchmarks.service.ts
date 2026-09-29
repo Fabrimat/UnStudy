@@ -1,28 +1,18 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { User } from '@summarize/db';
-import { config, ModelEntry } from '../config';
+import { CatalogService } from '../catalog/catalog.service';
+import { ModelEntry } from '../config';
 import { resolveSettings } from '../jobs/jobs.service';
 import { page } from '../pagination';
 import { PrismaService } from '../prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateBenchmarkDto, ListBenchmarksDto } from './admin.dto';
+import { jobCost, usageByJob } from './usage';
 
-type Usage = { calls: number; inputTokens: number; outputTokens: number; durationMs: number; failedCalls: number };
-const emptyUsage = (): Usage => ({ calls: 0, inputTokens: 0, outputTokens: 0, durationMs: 0, failedCalls: 0 });
-const PHASES = ['draft', 'verify'] as const;
-
-const entryOf = (id: string): ModelEntry | undefined => config.models.find((m) => m.id === id);
 // A catalogue entry may have been removed since the run: show the bare id, cost stays unknown.
-const modelView = (id: string) => {
-  const e = entryOf(id);
+const modelView = (e: ModelEntry | undefined, id: string) => {
   return { modelId: id, label: e?.label ?? id, provider: e?.provider ?? null, model: e?.model ?? null };
 };
-
-// USD for one phase's tokens; null when the entry has no prices.
-function phaseCost(entry: ModelEntry | undefined, u: Usage): number | null {
-  if (entry?.priceIn === undefined || entry.priceOut === undefined) return null;
-  return (entry.priceIn * u.inputTokens) / 1e6 + (entry.priceOut * u.outputTokens) / 1e6;
-}
 
 type Lane = { draft: string; verify: string | null };
 
@@ -30,11 +20,13 @@ type Lane = { draft: string; verify: string | null };
 export class BenchmarksService {
   private logger = new Logger(BenchmarksService.name);
 
-  constructor(private prisma: PrismaService, private storage: StorageService) {}
+  constructor(private prisma: PrismaService, private storage: StorageService, private catalog: CatalogService) {}
 
   async create(user: User, dto: CreateBenchmarkDto) {
+    // Lab may use adminOnly models but not disabled ones.
+    const picked = new Map<string, ModelEntry>();
     for (const l of dto.lanes) {
-      if (!entryOf(l.draft) || (l.verify !== null && !entryOf(l.verify))) throw new BadRequestException('Unknown model');
+      for (const id of l.verify === null ? [l.draft] : [l.draft, l.verify]) picked.set(id, await this.catalog.labModel(id));
     }
     let words = 0;
     const id = await this.prisma.$transaction(async (tx) => {
@@ -61,7 +53,7 @@ export class BenchmarksService {
             kind: 'summarize',
             credits: 0,
             benchmarkId: bench.id,
-            options: settings.build({ modelId: l.draft, model: entryOf(l.draft)!.model, phaseModels: { draft: l.draft, verify: l.verify }, lane }),
+            options: settings.build({ modelId: l.draft, model: picked.get(l.draft)!.model, phaseModels: { draft: l.draft, verify: l.verify }, lane }),
           },
         });
       }
@@ -105,44 +97,20 @@ export class BenchmarksService {
     });
     if (!b) throw new NotFoundException('Benchmark not found');
     const jobIds = b.jobs.map((j) => j.id);
-    const [all, failed] = await this.prisma.$transaction([
-      this.prisma.llmCall.groupBy({
-        by: ['jobId', 'phase'], where: { jobId: { in: jobIds } }, orderBy: [{ jobId: 'asc' }, { phase: 'asc' }],
-        _count: { _all: true }, _sum: { inputTokens: true, outputTokens: true, durationMs: true },
-      }),
-      this.prisma.llmCall.groupBy({
-        by: ['jobId', 'phase'], where: { jobId: { in: jobIds }, ok: false }, orderBy: [{ jobId: 'asc' }, { phase: 'asc' }],
-        _count: { _all: true },
-      }),
-    ]);
+    const catalog = await this.catalog.all();
+    const entryOf = (id: string) => catalog.find((m) => m.id === id);
+    const usages = await usageByJob(this.prisma, jobIds);
     const lanes = b.jobs
       .map((j) => {
         const o = j.options as { lane?: number; modelId?: string; phaseModels?: Lane };
         const pm: Lane = o.phaseModels ?? { draft: o.modelId ?? '', verify: null };
-        const usage = { draft: emptyUsage(), verify: emptyUsage() };
-        for (const r of all.filter((r) => r.jobId === j.id)) {
-          const c = r._count as { _all: number };
-          usage[r.phase] = {
-            calls: c._all,
-            inputTokens: r._sum?.inputTokens ?? 0,
-            outputTokens: r._sum?.outputTokens ?? 0,
-            durationMs: r._sum?.durationMs ?? 0,
-            failedCalls: (failed.find((f) => f.jobId === j.id && f.phase === r.phase)?._count as { _all: number } | undefined)?._all ?? 0,
-          };
-        }
-        const entries = { draft: entryOf(pm.draft), verify: pm.verify ? entryOf(pm.verify) : undefined };
-        // null as soon as a phase that made calls has no prices
-        let costUsd: number | null = 0;
-        for (const ph of PHASES) {
-          if (!usage[ph].calls) continue;
-          const c = phaseCost(entries[ph], usage[ph]);
-          costUsd = c === null || costUsd === null ? null : costUsd + c;
-        }
+        const usage = usages.get(j.id)!;
+        const costUsd = jobCost(usage, { draft: entryOf(pm.draft), verify: pm.verify ? entryOf(pm.verify) : undefined });
         return {
           index: o.lane ?? 0,
           jobId: j.id,
-          draft: modelView(pm.draft),
-          verify: pm.verify ? modelView(pm.verify) : null,
+          draft: modelView(entryOf(pm.draft), pm.draft),
+          verify: pm.verify ? modelView(entryOf(pm.verify), pm.verify) : null,
           status: j.status,
           progress: j.progress,
           phase: j.phase,

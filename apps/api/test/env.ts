@@ -9,3 +9,8 @@ process.env.S3_FORCE_PATH_STYLE = 'true';
 process.env.SMTP_URL = 'smtp://localhost:1025';
 process.env.MAIL_FROM = 'Summarize <no-reply@summarize.local>';
 process.env.GOOGLE_CLIENT_ID ??= '';
+// Pin the catalogue: the repo-root .env may hold a real LLM_MODELS, and config only fills unset vars. Specs that need
+// another catalogue (admin-env.ts) overwrite these before importing src/config.
+process.env.LLM_PROVIDERS = '';
+process.env.LLM_MODELS = '';
+process.env.LLM_MODEL = 'test-model';

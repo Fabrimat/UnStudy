@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Get, NotFoundException, Patch, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Patch, Query, UseGuards } from '@nestjs/common';
 import { Prisma, User } from '@summarize/db';
 import { CurrentUser, SessionGuard } from './auth/session.guard';
-import { config } from './config';
+import { CatalogService } from './catalog/catalog.service';
 import { LedgerService } from './credits/ledger.service';
 import { PreferencesDto } from './preferences.dto';
 import { page, PageQueryDto } from './pagination';
@@ -10,16 +10,19 @@ import { PrismaService } from './prisma.service';
 @Controller('me')
 @UseGuards(SessionGuard)
 export class MeController {
-  constructor(private ledger: LedgerService, private prisma: PrismaService) {}
+  constructor(private ledger: LedgerService, private prisma: PrismaService, private catalog: CatalogService) {}
 
   @Get()
   async me(@CurrentUser() user: User) {
-    return { id: user.id, email: user.email, name: user.name, balance: await this.ledger.balance(user.id), preferences: user.preferences, role: user.role };
+    // A saved model that was disabled or removed is dropped from the view (the stored preference stays).
+    const { model, ...prefs } = user.preferences as Record<string, unknown>;
+    const preferences = typeof model === 'string' && (await this.catalog.userModels()).some((m) => m.id === model) ? { ...prefs, model } : prefs;
+    return { id: user.id, email: user.email, name: user.name, balance: await this.ledger.balance(user.id), preferences, role: user.role };
   }
 
   @Patch('preferences')
   async setPreferences(@CurrentUser() user: User, @Body() dto: PreferencesDto) {
-    if (typeof dto.model === 'string' && !config.userModels.some((m) => m.id === dto.model)) throw new BadRequestException('Unknown model');
+    if (typeof dto.model === 'string') await this.catalog.userModel(dto.model);
     return this.prisma.$transaction(async (tx) => {
       // User row lock: two concurrent PATCHes must not lose each other's merge.
       const [row] = await tx.$queryRaw<{ preferences: Prisma.JsonObject }[]>`SELECT preferences FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;

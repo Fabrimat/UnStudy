@@ -30,7 +30,7 @@ export class JobsController {
   @Get(':id/content')
   @Header('Content-Type', 'text/markdown; charset=utf-8')
   content(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
-    return this.jobs.content(user, id);
+    return this.jobs.content(id, user.id);
   }
 
   @Delete(':id')
@@ -41,7 +41,7 @@ export class JobsController {
 
   @Get(':id/download')
   download(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Query('format') format: string) {
-    return this.jobs.downloadUrl(user, id, format);
+    return this.jobs.downloadUrl(id, format, user.id);
   }
 
   // ponytail: one DB poll every 2 s per open stream; switch to LISTEN/NOTIFY if many viewers watch at once.
