@@ -1,9 +1,10 @@
 import { QUICK_LENGTHS } from './api';
+import { t } from './i18n';
 
 export default function LengthPicker({ value, onChange, words }: { value: number; onChange: (v: number) => void; words?: number }) {
   return (
     <div>
-      Length: {value}%{words !== undefined && ` (≈ ${Math.round((words * value) / 100)} words)`}
+      {t('common.length', { value })}{words !== undefined && t('common.approxWords', { n: Math.round((words * value) / 100) })}
       <div className="mt-1 flex items-center gap-2">
         <input type="range" min={5} max={50} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1" />
         {QUICK_LENGTHS.map(([v, label]) => (

@@ -6,10 +6,11 @@ import Select from '../Select';
 import {
   api, ApiError, creditsForJob, Doc, EXTRAS, Extra, Job, LANGUAGES, lengthOf, modelOptions, styleOptions, uploadFailed, useMe, useMethods, useModels,
 } from '../api';
+import { fmt, t } from '../i18n';
 
 function errorText(e: Error) {
   if (e instanceof ApiError && e.status === 402) {
-    return `Not enough credits: this document needs ${e.body.needed}, you have ${e.body.balance}. Buy more on the Credits page.`;
+    return t('document.notEnough', { needed: e.body.needed, balance: e.body.balance });
   }
   return e.message;
 }
@@ -75,24 +76,24 @@ export default function DocumentPage() {
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   if (doc.error) return <p className="text-red-600">{doc.error.message}</p>;
-  if (!doc.data) return <p>Loading…</p>;
+  if (!doc.data) return <p>{t('common.loading')}</p>;
   const d = doc.data;
   if (d.status === 'uploaded') {
-    return <p>{uploadFailed(d) ? 'Upload failed — please upload the file again' : `Analyzing ${d.filename}…`}</p>;
+    return <p>{uploadFailed(d) ? t('api.uploadFailed') : t('document.analyzing', { name: d.filename })}</p>;
   }
-  if (d.status === 'rejected') return <p>{d.filename} was rejected: {d.rejectReason}</p>;
+  if (d.status === 'rejected') return <p>{t('document.rejected', { name: d.filename, reason: d.rejectReason ?? '' })}</p>;
 
   return (
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">{d.filename}</h1>
-      <p className="text-sm text-gray-600">{d.pages} pages · {d.words} words · {d.chapters?.length} part(s)</p>
+      <p className="text-sm text-gray-600">{t('document.meta', { pages: d.pages ?? '', words: d.words ?? '', parts: d.chapters?.length ?? '' })}</p>
       {d.jobs.length > 0 && (
         <div className="space-y-1">
-          <h2 className="font-medium">Summaries</h2>
+          <h2 className="font-medium">{t('document.summaries')}</h2>
           <ul className="space-y-1 text-sm">
             {d.jobs.map((j) => (
               <li key={j.id}>
-                <Link className="underline" to={`/jobs/${j.id}`}>Summary of {new Date(j.createdAt).toLocaleString()}</Link> — {j.status}
+                <Link className="underline" to={`/jobs/${j.id}`}>{t('document.summaryOf', { date: fmt.date(j.createdAt) })}</Link> — {t(`jobStatus.${j.status}`)}
               </li>
             ))}
           </ul>
@@ -100,30 +101,30 @@ export default function DocumentPage() {
       )}
       {/* With past summaries the options stay behind a button; a first run or a regenerate opens them directly. */}
       {!(formOpen || from || d.jobs.length === 0) ? (
-        <button onClick={() => setFormOpen(true)} className="rounded bg-black px-4 py-2 text-white">New summary</button>
+        <button onClick={() => setFormOpen(true)} className="rounded bg-black px-4 py-2 text-white">{t('document.newSummary')}</button>
       ) : (<>
-      {d.jobs.length > 0 && <h2 className="font-medium">New summary</h2>}
+      {d.jobs.length > 0 && <h2 className="font-medium">{t('document.newSummary')}</h2>}
       <div className="space-y-1 text-sm">
         <p>
-          Parts to summarize:{' '}
-          <button type="button" className="underline" onClick={() => setPicked({ ...picked, chapters: chapterList.map((_, i) => i) })}>All</button>{' · '}
-          <button type="button" className="underline" onClick={() => setPicked({ ...picked, chapters: [] })}>None</button>
+          {t('common.partsToSummarize')}{' '}
+          <button type="button" className="underline" onClick={() => setPicked({ ...picked, chapters: chapterList.map((_, i) => i) })}>{t('common.all')}</button>{' · '}
+          <button type="button" className="underline" onClick={() => setPicked({ ...picked, chapters: [] })}>{t('common.none')}</button>
         </p>
         {chapterList.map((c, i) => (
           <label key={i} className="block">
             <input type="checkbox" checked={selected.includes(i)} onChange={() => setPicked({ ...picked, chapters: toggle(selected, i) })} />{' '}
-            {c.title}{c.pageFrom ? ` (pp. ${c.pageFrom}–${c.pageTo})` : ''} · {c.words} words
+            {c.title}{c.pageFrom ? t('common.pp', { from: c.pageFrom, to: c.pageTo ?? '' }) : ''} · {t('common.words', { n: c.words })}
           </label>
         ))}
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Select label="Language" value={language} onChange={(v) => setPicked({ ...picked, language: v })} options={LANGUAGES} />
-        <Select label="Style" value={method} onChange={(v) => setPicked({ ...picked, method: v })} options={options} />
-        {models && models.length > 1 && modelId && <Select label="Model" value={modelId.id} onChange={(v) => setPicked({ ...picked, model: v })} options={modelOptions(models)} />}
+        <Select label={t('common.language')} value={language} onChange={(v) => setPicked({ ...picked, language: v })} options={LANGUAGES} />
+        <Select label={t('common.style')} value={method} onChange={(v) => setPicked({ ...picked, method: v })} options={options} />
+        {models && models.length > 1 && modelId && <Select label={t('common.model')} value={modelId.id} onChange={(v) => setPicked({ ...picked, model: v })} options={modelOptions(models)} />}
       </div>
       <LengthPicker value={lengthPercent} onChange={(v) => setPicked({ ...picked, lengthPercent: v })} words={words} />
       <div className="text-sm">
-        Extra sections:{' '}
+        {t('common.extraSections')}{' '}
         {EXTRAS.map(([v, label]) => (
           <label key={v} className="mr-3">
             <input type="checkbox" checked={extras.includes(v)} onChange={() => setPicked({ ...picked, extras: toggle(extras, v) })} /> {label}
@@ -131,18 +132,18 @@ export default function DocumentPage() {
         ))}
       </div>
       <label className="block">
-        Bibliographic line (optional)
+        {t('common.bibLine')}
         <input
           maxLength={300}
           value={bibliographicLine}
           onChange={(e) => setPicked({ ...picked, bibliographicLine: e.target.value })}
-          placeholder="**Arend Lijphart** – *Patterns of Democracy*, Yale University Press, 2012"
+          placeholder={t('document.bibPlaceholder')}
           className="mt-1 w-full rounded border bg-white p-2"
         />
       </label>
-      <p>Cost: <strong>{cost} credits</strong> · Your balance: {me.data?.balance} credits</p>
+      <p>{t('document.cost')} <strong>{t('common.credits', { n: cost })}</strong> · {t('document.balance', { n: me.data?.balance ?? '' })}</p>
       <button disabled={start.isPending || selected.length === 0} onClick={() => start.mutate()} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
-        Start summary
+        {t('document.start')}
       </button>
       {start.error && <p className="text-red-600">{errorText(start.error)}</p>}
       </>)}

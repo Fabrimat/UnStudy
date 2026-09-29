@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router';
 import { api, Me, useMe } from './api';
+import { t } from './i18n';
 import AdminLab from './pages/AdminLab';
 import { AdminDocumentPage, AdminDocuments, AdminJobPage, AdminJobs, AdminLayout, AdminModels, AdminOverview, AdminUserPage, AdminUsers } from './pages/admin';
 import BenchmarkPage from './pages/BenchmarkPage';
@@ -50,7 +51,7 @@ export default function App() {
 
 function RequireUser() {
   const me = useMe();
-  if (me.isPending) return <p className="p-8">Loading…</p>;
+  if (me.isPending) return <p className="p-8">{t('common.loading')}</p>;
   if (me.error) return <Navigate to="/login" replace />;
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
@@ -77,19 +78,19 @@ function Header({ me }: { me: Me }) {
   }
   return (
     <header className="flex items-center justify-between border-b pb-3">
-      <Link to="/" className="text-lg font-semibold">Summarize</Link>
+      <Link to="/" className="text-lg font-semibold">{t('common.appName')}</Link>
       <nav className="flex gap-4 text-sm">
-        {([['/', 'Dashboard'], ['/documents', 'Documents'], ['/jobs', 'Summaries'], ['/credits', 'Credits'], ['/methods', 'Methods'], ['/settings', 'Settings']] as const).map(([to, text]) => (
+        {([['/', t('nav.dashboard')], ['/documents', t('nav.documents')], ['/jobs', t('nav.summaries')], ['/credits', t('nav.credits')], ['/methods', t('nav.methods')], ['/settings', t('nav.settings')]] as const).map(([to, text]) => (
           <NavLink key={to} to={to} end className={({ isActive }) => (isActive ? 'font-semibold underline' : 'hover:underline')}>{text}</NavLink>
         ))}
         {me.role === 'admin' && (
-          <NavLink to="/admin" className={({ isActive }) => (isActive ? 'font-semibold underline' : 'hover:underline')}>Admin</NavLink>
+          <NavLink to="/admin" className={({ isActive }) => (isActive ? 'font-semibold underline' : 'hover:underline')}>{t('nav.admin')}</NavLink>
         )}
       </nav>
       <div className="flex items-center gap-4 text-sm">
-        <span data-testid="balance" className="rounded bg-gray-200 px-2 py-1">{me.balance} credits</span>
+        <span data-testid="balance" className="rounded bg-gray-200 px-2 py-1">{t('common.credits', { n: me.balance })}</span>
         <span>{me.email}</span>
-        <button onClick={logout} className="underline">Log out</button>
+        <button onClick={logout} className="underline">{t('nav.logout')}</button>
       </div>
     </header>
   );

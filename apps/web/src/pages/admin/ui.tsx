@@ -1,10 +1,11 @@
 import { ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
+import { fmt } from '../../i18n';
 
-export const fmtDate = (s: string | null | undefined) => (s ? new Date(s).toLocaleString() : '—');
+export const fmtDate = (s: string | null | undefined) => (s ? fmt.date(s) : '—');
 export const fmtCost = (c: number | null | undefined) => (c === null || c === undefined ? '—' : `$${c.toFixed(c < 1 ? 4 : 2)}`);
 export const fmtDuration = (ms: number | null | undefined) => (ms === null || ms === undefined ? '—' : ms < 60_000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 60_000)}min`);
-export const fmtNum = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString());
+export const fmtNum = (n: number | null | undefined) => (n === null || n === undefined ? '—' : fmt.number(n));
 
 export const inputCls = 'mt-1 w-full rounded border bg-white p-2';
 export const btnCls = 'rounded border bg-white px-3 py-1 text-sm disabled:opacity-50';

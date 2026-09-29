@@ -8,6 +8,7 @@ import {
   AdminModel, api, BenchmarkDetail, BenchmarkSummary, Doc, EXTRAS, Extra, LANGUAGES, LaneSpec, Page, priceHint, qs, styleOptions,
   useAdminModels, useMethods,
 } from '../api';
+import { fmt, t } from '../i18n';
 
 const MAX_LANES = 8;
 type LaneDraft = { draft: string; verify: string }; // verify: 'same' | 'none' | model id
@@ -18,8 +19,8 @@ export default function AdminLab() {
   return (
     <section className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Lab</h1>
-        <p className="text-sm text-gray-600">Run one summary across several model lanes in parallel and compare speed, cost and output. Lab runs cost no credits.</p>
+        <h1 className="text-xl font-semibold">{t('adminLab.title')}</h1>
+        <p className="text-sm text-gray-600">{t('adminLab.intro')}</p>
       </div>
       <NewRun />
       <PastRuns />
@@ -80,41 +81,41 @@ function NewRun() {
     },
   });
 
-  const modelText = (m: AdminModel) => `${m.label} · ${m.provider}/${m.model}${m.adminOnly ? ' · admin-only' : ''}`;
+  const modelText = (m: AdminModel) => `${m.label} · ${m.provider}/${m.model}${m.adminOnly ? t('adminLab.adminOnly') : ''}`;
   const modelOpts = models.map((m) => [m.id, modelText(m)] as const);
   const byId = (id: string) => models.find((m) => m.id === id);
 
   return (
     <div className="space-y-4 rounded border bg-white p-4">
-      <h2 className="font-medium">New run</h2>
+      <h2 className="font-medium">{t('adminLab.newRun')}</h2>
       {admin.error && <p className="text-red-600">{admin.error.message}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="block">
-            Document
-            <input value={docQ} onChange={(e) => setDocQ(e.target.value)} placeholder="Filter by name…" className="mt-1 w-full rounded border bg-white p-2" />
+            {t('common.document')}
+            <input value={docQ} onChange={(e) => setDocQ(e.target.value)} placeholder={t('adminLab.filter')} className="mt-1 w-full rounded border bg-white p-2" />
           </label>
           <select
             className="mt-1 w-full rounded border bg-white p-2"
             value={doc?.id ?? ''}
             onChange={(e) => { setDocumentId(e.target.value); setChapters(null); }}
           >
-            {docList.length === 0 && <option value="">No analyzed documents</option>}
-            {docList.map((d) => <option key={d.id} value={d.id}>{d.filename} ({d.words} words)</option>)}
+            {docList.length === 0 && <option value="">{t('adminLab.noDocs')}</option>}
+            {docList.map((d) => <option key={d.id} value={d.id}>{t('adminLab.docOption', { name: d.filename, words: d.words ?? '' })}</option>)}
           </select>
         </div>
         <label className="block">
-          Run name (optional)
+          {t('adminLab.runName')}
           <input maxLength={80} value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded border bg-white p-2" />
         </label>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Select label="Language" value={language} onChange={setLanguage} options={LANGUAGES} />
-        <Select label="Style" value={method} onChange={setMethod} options={styles} />
+        <Select label={t('common.language')} value={language} onChange={setLanguage} options={LANGUAGES} />
+        <Select label={t('common.style')} value={method} onChange={setMethod} options={styles} />
       </div>
       <LengthPicker value={lengthPercent} onChange={setLengthPercent} words={words} />
       <div className="text-sm">
-        Extra sections:{' '}
+        {t('common.extraSections')}{' '}
         {EXTRAS.map(([v, label]) => (
           <label key={v} className="mr-3">
             <input type="checkbox" checked={extras.includes(v)} onChange={() => setExtras(toggle(extras, v))} /> {label}
@@ -123,38 +124,38 @@ function NewRun() {
       </div>
       {chapterList.length > 1 && (
         <details className="text-sm">
-          <summary className="cursor-pointer">Parts to summarize ({selected.length}/{chapterList.length})</summary>
+          <summary className="cursor-pointer">{t('adminLab.partsSummary', { selected: selected.length, total: chapterList.length })}</summary>
           <div className="mt-1 space-y-1">
             <p>
-              <button type="button" className="underline" onClick={() => setChapters(null)}>All</button>{' · '}
-              <button type="button" className="underline" onClick={() => setChapters([])}>None</button>
+              <button type="button" className="underline" onClick={() => setChapters(null)}>{t('common.all')}</button>{' · '}
+              <button type="button" className="underline" onClick={() => setChapters([])}>{t('common.none')}</button>
             </p>
             {chapterList.map((c, i) => (
               <label key={i} className="block">
                 <input type="checkbox" checked={selected.includes(i)} onChange={() => setChapters(toggle(selected, i))} />{' '}
-                {c.title}{c.pageFrom ? ` (pp. ${c.pageFrom}–${c.pageTo})` : ''} · {c.words} words
+                {c.title}{c.pageFrom ? t('common.pp', { from: c.pageFrom, to: c.pageTo ?? '' }) : ''} · {t('common.words', { n: c.words })}
               </label>
             ))}
           </div>
         </details>
       )}
       <label className="block text-sm">
-        Bibliographic line (optional)
+        {t('common.bibLine')}
         <input maxLength={300} value={bibliographicLine} onChange={(e) => setBib(e.target.value)} className="mt-1 w-full rounded border bg-white p-2" />
       </label>
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-medium">Lanes ({shown.length}/{MAX_LANES})</h3>
+          <h3 className="font-medium">{t('adminLab.lanes', { n: shown.length, max: MAX_LANES })}</h3>
           <div className="flex gap-2 text-sm">
             <button
               type="button"
               disabled={models.length === 0}
               onClick={() => setLanes(models.slice(0, MAX_LANES).map((m) => ({ draft: m.id, verify: 'same' })))}
               className="rounded border bg-white px-3 py-1 disabled:opacity-50"
-              title={models.length > MAX_LANES ? `Only the first ${MAX_LANES} models fit` : undefined}
+              title={models.length > MAX_LANES ? t('adminLab.onlyFirst', { max: MAX_LANES }) : undefined}
             >
-              One lane per model
+              {t('adminLab.oneLanePerModel')}
             </button>
             <button
               type="button"
@@ -162,7 +163,7 @@ function NewRun() {
               onClick={() => setLanes([...shown, { draft: firstModel, verify: 'same' }])}
               className="rounded border bg-white px-3 py-1 disabled:opacity-50"
             >
-              + Add lane
+              {t('adminLab.addLane')}
             </button>
           </div>
         </div>
@@ -173,18 +174,18 @@ function NewRun() {
             <div key={i} className="grid items-start gap-3 rounded border bg-gray-50 p-3 sm:grid-cols-[2rem_1fr_1fr_auto]">
               <span className="pt-2 font-mono text-sm text-gray-500">#{i + 1}</span>
               <div>
-                <Select label="Draft model" value={l.draft} onChange={(x) => setLane(i, { draft: x })} options={modelOpts} />
+                <Select label={t('adminLab.draftModel')} value={l.draft} onChange={(x) => setLane(i, { draft: x })} options={modelOpts} />
                 {d && <p className="mt-1 text-xs text-gray-600">{d.provider} · <span className="font-mono">{d.model}</span> · {priceHint(d)}</p>}
               </div>
               <div>
                 <Select
-                  label="Fact-check model"
+                  label={t('adminLab.factCheckModel')}
                   value={l.verify}
                   onChange={(x) => setLane(i, { verify: x })}
-                  options={[['same', 'Same as draft'], ['none', 'None — skip fact-check'], ...modelOpts]}
+                  options={[['same', t('adminLab.sameAsDraft')], ['none', t('adminLab.noneSkip')], ...modelOpts]}
                 />
                 <p className="mt-1 text-xs text-gray-600">
-                  {v ? <>{v.provider} · <span className="font-mono">{v.model}</span> · {priceHint(v)}</> : 'No fact-check pass'}
+                  {v ? <>{v.provider} · <span className="font-mono">{v.model}</span> · {priceHint(v)}</> : t('adminLab.noFactCheckPass')}
                 </p>
               </div>
               <button
@@ -193,7 +194,7 @@ function NewRun() {
                 onClick={() => setLanes(shown.filter((_, j) => j !== i))}
                 className="rounded border bg-white px-3 py-2 text-sm disabled:opacity-50 sm:mt-6"
               >
-                Remove
+                {t('adminLab.remove')}
               </button>
             </div>
           );
@@ -205,7 +206,7 @@ function NewRun() {
         onClick={() => start.mutate()}
         className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
       >
-        Start run ({shown.length} lane{shown.length === 1 ? '' : 's'})
+        {t(shown.length === 1 ? 'adminLab.startOne' : 'adminLab.startOther', { n: shown.length })}
       </button>
       {start.error && <p className="text-red-600">{start.error.message}</p>}
     </div>
@@ -220,25 +221,25 @@ function PastRuns() {
     refetchInterval: (q) => (q.state.data?.items.some((b) => b.running > 0) ? 3000 : false),
   });
   if (runs.error) return <p className="text-red-600">{runs.error.message}</p>;
-  if (!runs.data) return <p>Loading…</p>;
+  if (!runs.data) return <p>{t('common.loading')}</p>;
   return (
     <div className="space-y-3">
-      <h2 className="font-medium">Past runs</h2>
+      <h2 className="font-medium">{t('adminLab.pastRuns')}</h2>
       {runs.data.items.length === 0 ? (
-        <p className="text-sm text-gray-600">No runs yet.</p>
+        <p className="text-sm text-gray-600">{t('adminLab.noRuns')}</p>
       ) : (
         <ul className="divide-y rounded border bg-white text-sm">
           {runs.data.items.map((b) => (
             <li key={b.id} className="flex flex-wrap items-center justify-between gap-2 p-3">
               <div>
-                <Link className="font-medium underline" to={`/admin/benchmarks/${b.id}`}>{b.name || 'Untitled run'}</Link>
-                <p className="text-xs text-gray-600">{b.document.filename} · {new Date(b.createdAt).toLocaleString()}</p>
+                <Link className="font-medium underline" to={`/admin/benchmarks/${b.id}`}>{b.name || t('adminLab.untitled')}</Link>
+                <p className="text-xs text-gray-600">{b.document.filename} · {fmt.date(b.createdAt)}</p>
               </div>
               <p className="font-mono text-xs">
-                {b.lanes} lanes ·{' '}
-                <span className="text-green-700">{b.done} done</span> ·{' '}
-                <span className={b.failed ? 'text-red-600' : ''}>{b.failed} failed</span> ·{' '}
-                <span className={b.running ? 'text-amber-700' : ''}>{b.running} running</span>
+                {t('adminLab.lanesCount', { n: b.lanes })} ·{' '}
+                <span className="text-green-700">{t('adminLab.nDone', { n: b.done })}</span> ·{' '}
+                <span className={b.failed ? 'text-red-600' : ''}>{t('adminLab.nFailed', { n: b.failed })}</span> ·{' '}
+                <span className={b.running ? 'text-amber-700' : ''}>{t('adminLab.nRunning', { n: b.running })}</span>
               </p>
             </li>
           ))}

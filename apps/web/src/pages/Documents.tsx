@@ -4,9 +4,10 @@ import { Link, useSearchParams } from 'react-router';
 import Pager from '../Pager';
 import Select from '../Select';
 import { api, busy, Doc, docStatus, Page, qs } from '../api';
+import { t } from '../i18n';
 
-const STATUSES = [['', 'All statuses'], ['analyzing', 'Analyzing'], ['ready', 'Ready'], ['rejected', 'Rejected'], ['summarized', 'Summarized']] as const;
-const SORTS = [['createdAt:desc', 'Newest first'], ['createdAt:asc', 'Oldest first'], ['filename:asc', 'Name A–Z'], ['filename:desc', 'Name Z–A']] as const;
+const STATUSES = [['', t('common.allStatuses')], ['analyzing', t('documents.analyzing')], ['ready', t('documents.ready')], ['rejected', t('documents.rejected')], ['summarized', t('documents.summarized')]] as const;
+const SORTS = [['createdAt:desc', t('documents.newest')], ['createdAt:asc', t('documents.oldest')], ['filename:asc', t('documents.nameAsc')], ['filename:desc', t('documents.nameDesc')]] as const;
 
 export default function Documents() {
   const qc = useQueryClient();
@@ -58,18 +59,18 @@ export default function Documents() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">Documents</h1>
+      <h1 className="text-xl font-semibold">{t('nav.documents')}</h1>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block">
-          Search
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="File name" className="mt-1 w-full rounded border bg-white p-2" />
+          {t('documents.search')}
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('documents.fileName')} className="mt-1 w-full rounded border bg-white p-2" />
         </label>
-        <Select label="Status" value={status} onChange={(v) => set({ status: v, page: '' })} options={STATUSES} />
-        <Select label="Sort" value={sort} onChange={(v) => set({ sort: v, page: '' })} options={SORTS} />
+        <Select label={t('common.status')} value={status} onChange={(v) => set({ status: v, page: '' })} options={STATUSES} />
+        <Select label={t('documents.sort')} value={sort} onChange={(v) => set({ sort: v, page: '' })} options={SORTS} />
       </div>
       {error && <p className="text-red-600">{error}</p>}
       <ul className="divide-y rounded border bg-white">
-        {docs.data?.items.length === 0 && <li className="p-3 text-gray-500">No documents found.</li>}
+        {docs.data?.items.length === 0 && <li className="p-3 text-gray-500">{t('documents.none')}</li>}
         {docs.data?.items.map((d) => (
           <li key={d.id} className="flex items-center justify-between gap-4 p-3">
             {renaming?.id === d.id ? (
@@ -89,12 +90,12 @@ export default function Documents() {
             )}
             <span className="hidden shrink-0 text-sm text-gray-600 sm:inline">{docStatus(d)}</span>
             <span className="flex shrink-0 gap-3 text-sm">
-              <button className="underline" onClick={() => setRenaming({ id: d.id, name: d.filename })}>Rename</button>
+              <button className="underline" onClick={() => setRenaming({ id: d.id, name: d.filename })}>{t('documents.rename')}</button>
               <button
                 className="text-red-600 underline"
-                onClick={() => window.confirm(`Delete "${d.filename}" and all its summaries? This cannot be undone and used credits are not returned.`) && remove.mutate(d.id)}
+                onClick={() => window.confirm(t('documents.confirmDelete', { name: d.filename })) && remove.mutate(d.id)}
               >
-                Delete
+                {t('common.delete')}
               </button>
             </span>
           </li>

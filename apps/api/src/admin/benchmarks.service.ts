@@ -127,6 +127,15 @@ export class BenchmarksService {
     return { id: b.id, name: (b.options as { name?: string }).name ?? null, createdAt: b.createdAt, options: b.options, document: b.document, lanes };
   }
 
+  // empty name = untitled
+  async rename(user: User, id: string, name: string) {
+    const b = await this.prisma.benchmark.findFirst({ where: { id, userId: user.id } });
+    if (!b) throw new NotFoundException('Benchmark not found');
+    const { name: _, ...rest } = b.options as Record<string, unknown>;
+    await this.prisma.benchmark.update({ where: { id }, data: { options: { ...(name && { name }), ...rest } as object } });
+    return this.get(user, id);
+  }
+
   async remove(user: User, id: string) {
     const b = await this.prisma.benchmark.findFirst({ where: { id, userId: user.id }, include: { jobs: true } });
     if (!b) throw new NotFoundException('Benchmark not found');

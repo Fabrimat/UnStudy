@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { api } from '../api';
+import { t } from '../i18n';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -21,21 +22,21 @@ export default function Login() {
 
   return (
     <main className="mx-auto mt-24 max-w-sm space-y-4 p-6">
-      <h1 className="text-2xl font-semibold">Log in to Summarize</h1>
+      <h1 className="text-2xl font-semibold">{t('login.title')}</h1>
       {sent ? (
-        <p>Check your inbox: we sent a login link to {email}. It is valid for 15 minutes.</p>
+        <p>{t('login.sent', { email })}</p>
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <label className="block">
-            Email
+            {t('login.email')}
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded border bg-white p-2" />
           </label>
-          <button className="w-full rounded bg-black p-2 text-white">Send login link</button>
+          <button className="w-full rounded bg-black p-2 text-white">{t('login.send')}</button>
           {error && <p className="text-red-600">{error}</p>}
         </form>
       )}
       {providers.data?.google && (
-        <a href="/api/auth/google" className="block rounded border bg-white p-2 text-center">Continue with Google</a>
+        <a href="/api/auth/google" className="block rounded border bg-white p-2 text-center">{t('login.google')}</a>
       )}
     </main>
   );

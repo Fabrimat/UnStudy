@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import { User } from '@summarize/db';
 import { CurrentUser } from '../auth/session.guard';
 import { AdminGuard } from './admin.guard';
-import { CreateBenchmarkDto, CreateModelDto, ListBenchmarksDto, ModelOrderDto, UpdateModelDto } from './admin.dto';
+import { CreateBenchmarkDto, CreateModelDto, ListBenchmarksDto, ModelOrderDto, RenameBenchmarkDto, UpdateModelDto } from './admin.dto';
 import { BenchmarksService } from './benchmarks.service';
 import { ModelsAdminService } from './models.service';
 
@@ -46,6 +46,11 @@ export class AdminController {
   @Get('benchmarks/:id')
   get(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.benchmarks.get(user, id);
+  }
+
+  @Patch('benchmarks/:id')
+  rename(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RenameBenchmarkDto) {
+    return this.benchmarks.rename(user, id, dto.name);
   }
 
   @Delete('benchmarks/:id')

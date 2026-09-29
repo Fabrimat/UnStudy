@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, Doc, Job } from '../api';
+import { t } from '../i18n';
 
 export default function JobPage() {
   const { id } = useParams();
@@ -46,16 +47,16 @@ export default function JobPage() {
     window.location.href = url;
   }
 
-  if (!job) return <p>{connectionLost ? 'Could not load progress. Reload the page or log in again.' : 'Loading…'}</p>;
+  if (!job) return <p>{connectionLost ? t('job.couldNotLoad') : t('common.loading')}</p>;
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">Summary</h1>
+      <h1 className="text-xl font-semibold">{t('common.summary')}</h1>
       {job.status === 'done' && (
         <>
-          <p className="font-medium text-green-700">Done</p>
+          <p className="font-medium text-green-700">{t('common.done')}</p>
           <div className="flex gap-3">
-            <button onClick={() => download('md')} className="rounded bg-black px-4 py-2 text-white">Download .md</button>
-            <button onClick={() => download('docx')} className="rounded bg-black px-4 py-2 text-white">Download .docx</button>
+            <button onClick={() => download('md')} className="rounded bg-black px-4 py-2 text-white">{t('job.downloadMd')}</button>
+            <button onClick={() => download('docx')} className="rounded bg-black px-4 py-2 text-white">{t('job.downloadDocx')}</button>
           </div>
           {content && <div className="prose-summary rounded border bg-white p-4"><Markdown disallowedElements={['img']}>{content}</Markdown></div>}
         </>
@@ -66,21 +67,21 @@ export default function JobPage() {
           <div className="h-3 w-full rounded bg-gray-200">
             <div className="h-3 rounded bg-black transition-all" style={{ width: `${job.progress}%` }} />
           </div>
-          <p className="text-sm text-gray-600">{job.progress}% · {job.status === 'queued' ? 'Waiting in queue' : job.phase}</p>
+          <p className="text-sm text-gray-600">{job.progress}% · {job.status === 'queued' ? t('common.waitingInQueue') : job.phase}</p>
         </>
       )}
       {(job.status === 'done' || job.status === 'failed') && (
         <button
           disabled={fileDeleted}
-          title={fileDeleted ? 'The original file was deleted' : undefined}
+          title={fileDeleted ? t('job.fileDeleted') : undefined}
           onClick={() => navigate(`/documents/${job.documentId}?from=${job.id}`)}
           className="rounded border bg-white px-4 py-2 disabled:opacity-50"
         >
-          Regenerate with other options
+          {t('job.regenerate')}
         </button>
       )}
       <br />
-      <Link to="/" className="underline">Back to dashboard</Link>
+      <Link to="/" className="underline">{t('job.back')}</Link>
     </section>
   );
 }

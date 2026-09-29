@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError, BenchmarkDetail, lengthLabel, Lane, laneActive, LANGUAGES, methodLabel, PhaseUsage, useMethods } from '../api';
+import { fmt, t } from '../i18n';
 
 const fmtDuration = (ms: number | null) => {
   if (ms === null || ms === undefined) return '—';
@@ -34,42 +36,71 @@ export default function BenchmarkPage() {
     },
   });
 
+  const [draft, setDraft] = useState<string | null>(null);
+  const rename = useMutation({
+    mutationFn: (name: string) => api(`/admin/benchmarks/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+    onSuccess: () => {
+      setDraft(null);
+      qc.invalidateQueries({ queryKey: ['admin', 'benchmarks'] });
+    },
+  });
+
   if (bench.error) return <p className="text-red-600">{bench.error.message}</p>;
-  if (!bench.data) return <p>Loading…</p>;
+  if (!bench.data) return <p>{t('common.loading')}</p>;
   const b = bench.data;
   const running = b.lanes.some(laneActive);
   const o = b.options;
   const lang = LANGUAGES.find(([v]) => v === o.language)?.[1] ?? String(o.language ?? '');
-  const extras = Array.isArray(o.extras) && o.extras.length ? (o.extras as string[]).join(', ') : 'none';
+  const extras = Array.isArray(o.extras) && o.extras.length ? (o.extras as string[]).join(', ') : t('benchmark.extrasNone');
   const done = b.lanes.filter((l) => l.status === 'done');
 
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link to="/admin/lab" className="text-sm underline">← Lab</Link>
-          <h1 className="text-xl font-semibold">{b.name || 'Untitled run'}</h1>
+          <Link to="/admin/lab" className="text-sm underline">{t('benchmark.backToLab')}</Link>
+          {draft === null ? (
+            <h1 className="text-xl font-semibold">
+              {b.name || t('adminLab.untitled')}
+              <button onClick={() => { rename.reset(); setDraft(b.name ?? ''); }} className="ml-3 rounded border bg-white px-2 py-0.5 align-middle text-xs font-normal">{t('benchmark.rename')}</button>
+            </h1>
+          ) : (
+            <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); rename.mutate(draft); }}>
+              <input
+                autoFocus
+                value={draft}
+                maxLength={80}
+                placeholder={t('benchmark.namePlaceholder')}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => e.key === 'Escape' && setDraft(null)}
+                className="rounded border px-2 py-1 text-lg font-semibold"
+              />
+              <button type="submit" disabled={rename.isPending} className="rounded bg-black px-3 py-1 text-sm text-white disabled:opacity-50">{t('common.save')}</button>
+              <button type="button" onClick={() => setDraft(null)} className="rounded border bg-white px-3 py-1 text-sm">{t('common.cancel')}</button>
+            </form>
+          )}
+          {rename.error && <p className="text-sm text-red-600">{rename.error.message}</p>}
           <p className="text-sm text-gray-600">
             <Link className="underline" to={`/documents/${b.document.id}`}>{b.document.filename}</Link>
-            {' '}· {b.document.pages} pages · {b.document.words} words · {new Date(b.createdAt).toLocaleString()}
+            {' '}· {t('benchmark.docMeta', { pages: b.document.pages ?? '', words: b.document.words ?? '' })} · {fmt.date(b.createdAt)}
           </p>
           <p className="text-sm text-gray-600">
-            {lang} · {lengthLabel(o)} · {methodLabel(o, methods.data)} · extras: {extras}
-            {Array.isArray(o.chapters) && ` · ${o.chapters.length} part(s)`}
+            {lang} · {lengthLabel(o)} · {methodLabel(o, methods.data)} · {t('benchmark.extras', { extras })}
+            {Array.isArray(o.chapters) && ` · ${t('common.parts', { n: o.chapters.length })}`}
           </p>
         </div>
         <button
           disabled={running || remove.isPending}
-          title={running ? 'Wait for all lanes to finish' : undefined}
-          onClick={() => window.confirm('Delete this run and all its results?') && remove.mutate()}
+          title={running ? t('benchmark.waitLanes') : undefined}
+          onClick={() => window.confirm(t('benchmark.confirmDelete')) && remove.mutate()}
           className="rounded border border-red-300 bg-white px-3 py-1 text-sm text-red-700 disabled:opacity-50"
         >
-          Delete run
+          {t('benchmark.deleteRun')}
         </button>
       </div>
       {remove.error && (
         <p className="text-red-600">
-          {remove.error instanceof ApiError && remove.error.status === 409 ? 'Some lanes are still running; try again when they finish.' : remove.error.message}
+          {remove.error instanceof ApiError && remove.error.status === 409 ? t('benchmark.stillRunning') : remove.error.message}
         </p>
       )}
 
@@ -84,7 +115,7 @@ export default function BenchmarkPage() {
 
 function usageText(u: PhaseUsage | undefined, used: boolean) {
   if (!used || !u) return '—';
-  return `${fmtTok(u.inputTokens)} / ${fmtTok(u.outputTokens)}${u.failedCalls ? ` (${u.failedCalls} failed)` : ''}`;
+  return `${fmtTok(u.inputTokens)} / ${fmtTok(u.outputTokens)}${u.failedCalls ? t('benchmark.failedCalls', { n: u.failedCalls }) : ''}`;
 }
 
 function MetricsTable({ lanes }: { lanes: Lane[] }) {
@@ -98,7 +129,7 @@ function MetricsTable({ lanes }: { lanes: Lane[] }) {
       <table className="w-full text-left text-sm">
         <thead className="bg-gray-100 text-xs uppercase text-gray-600">
           <tr>
-            {['Lane', 'Draft', 'Fact-check', 'Status', 'Time', 'Draft tok in/out', 'Check tok in/out', 'Est. cost', 'Warn'].map((h) => <th key={h} className="whitespace-nowrap px-3 py-2">{h}</th>)}
+            {[t('benchmark.colLane'), t('benchmark.colDraft'), t('benchmark.colFactCheck'), t('common.status'), t('benchmark.colTime'), t('benchmark.colDraftTok'), t('benchmark.colCheckTok'), t('benchmark.colCost'), t('benchmark.colWarn')].map((h) => <th key={h} className="whitespace-nowrap px-3 py-2">{h}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -123,7 +154,7 @@ function MetricsTable({ lanes }: { lanes: Lane[] }) {
           ))}
         </tbody>
       </table>
-      <p className="border-t px-3 py-1 text-xs text-gray-500">⚡ fastest done lane · ★ cheapest done lane · costs are estimates from catalog prices.</p>
+      <p className="border-t px-3 py-1 text-xs text-gray-500">{t('benchmark.legend')}</p>
     </div>
   );
 }
@@ -138,12 +169,12 @@ function ModelCell({ m }: { m: { label: string; provider: string; model: string 
 }
 
 function StatusCell({ lane: l }: { lane: Lane }) {
-  if (l.status === 'done') return <span className="font-medium text-green-700">Done</span>;
-  if (l.status === 'failed') return <span className="font-medium text-red-600" title={l.error ?? undefined}>Failed</span>;
+  if (l.status === 'done') return <span className="font-medium text-green-700">{t('common.done')}</span>;
+  if (l.status === 'failed') return <span className="font-medium text-red-600" title={l.error ?? undefined}>{t('common.failed')}</span>;
   return (
     <div>
       <div className="h-2 w-full rounded bg-gray-200"><div className="h-2 rounded bg-black transition-all" style={{ width: `${l.progress}%` }} /></div>
-      <p className="mt-1 text-xs text-gray-600">{l.progress}% · {l.status === 'queued' ? 'queued' : l.phase}</p>
+      <p className="mt-1 text-xs text-gray-600">{l.progress}% · {l.status === 'queued' ? t('jobStatus.queued') : l.phase}</p>
     </div>
   );
 }
@@ -155,7 +186,7 @@ function LaneOutput({ lane: l }: { lane: Lane }) {
     enabled: done,
     staleTime: Infinity,
     // not api(): the response is markdown, not JSON
-    queryFn: () => fetch(`/api/jobs/${l.jobId}/content`, { credentials: 'same-origin' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`Could not load summary (${r.status})`)))),
+    queryFn: () => fetch(`/api/jobs/${l.jobId}/content`, { credentials: 'same-origin' }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(t('benchmark.couldNotLoadSummary', { status: r.status }))))),
   });
   const dl = useMutation({
     mutationFn: async (format: 'md' | 'docx') => {
@@ -168,7 +199,7 @@ function LaneOutput({ lane: l }: { lane: Lane }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">
           <span className="font-mono">{laneLabel(l)}</span> {l.draft.label}
-          {l.verify ? ` → ${l.verify.label}` : ' (no fact-check)'}
+          {l.verify ? ` → ${l.verify.label}` : t('benchmark.noFactCheck')}
         </h3>
         {done && (
           <div className="flex gap-2 text-xs">
@@ -178,15 +209,15 @@ function LaneOutput({ lane: l }: { lane: Lane }) {
         )}
       </div>
       {dl.error && <p className="text-xs text-red-600">{dl.error.message}</p>}
-      {l.status === 'failed' && <p className="text-sm text-red-600">{l.error ?? 'Failed'}</p>}
+      {l.status === 'failed' && <p className="text-sm text-red-600">{l.error ?? t('common.failed')}</p>}
       {l.warnings.length > 0 && (
         <details className="text-sm">
-          <summary className="cursor-pointer text-amber-700">{l.warnings.length} warning{l.warnings.length === 1 ? '' : 's'}</summary>
+          <summary className="cursor-pointer text-amber-700">{t(l.warnings.length === 1 ? 'benchmark.warningOne' : 'benchmark.warningOther', { n: l.warnings.length })}</summary>
           <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">{l.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
         </details>
       )}
       {done && content.error && <p className="text-sm text-red-600">{content.error.message}</p>}
-      {done && content.isPending && <p className="text-sm text-gray-600">Loading…</p>}
+      {done && content.isPending && <p className="text-sm text-gray-600">{t('common.loading')}</p>}
       {content.data && (
         <div className="prose-summary max-h-[70vh] overflow-y-auto rounded border p-3">
           <Markdown disallowedElements={['img']}>{content.data}</Markdown>

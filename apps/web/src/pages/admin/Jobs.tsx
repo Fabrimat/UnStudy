@@ -3,12 +3,13 @@ import Markdown from 'react-markdown';
 import { Link, useParams } from 'react-router';
 import Pager from '../../Pager';
 import Select from '../../Select';
+import { t } from '../../i18n';
 import { openAdminDownload, useAdminJob, useAdminJobs } from '../../api';
 import { Err, Field, fmtCost, fmtDate, fmtDuration, fmtNum, Table, useFilters } from './ui';
 
-const STATUSES = [['', 'Tutti gli stati'], ['queued', 'In coda'], ['running', 'In corso'], ['done', 'Completato'], ['failed', 'Fallito']] as const;
-const KINDS = [['', 'Tutti i tipi'], ['summarize', 'Riassunto'], ['analyze', 'Analisi']] as const;
-const LAB = [['', 'Lab e normali'], ['false', 'Solo normali'], ['true', 'Solo Lab']] as const;
+const STATUSES = [['', t('common.allStatuses')], ['queued', t('admin.jobs.queued')], ['running', t('admin.jobs.running')], ['done', t('admin.jobs.done')], ['failed', t('admin.jobs.failed')]] as const;
+const KINDS = [['', t('admin.jobs.allTypes')], ['summarize', t('admin.jobs.summarize')], ['analyze', t('admin.jobs.analyze')]] as const;
+const LAB = [['', t('admin.jobs.labAndNormal')], ['false', t('admin.jobs.onlyNormal')], ['true', t('admin.jobs.onlyLab')]] as const;
 
 export default function AdminJobs() {
   const f = useFilters();
@@ -16,24 +17,24 @@ export default function AdminJobs() {
   const jobs = useAdminJobs(filters);
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">Job</h1>
+      <h1 className="text-xl font-semibold">{t('admin.nav.jobs')}</h1>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Select label="Stato" value={filters.status} onChange={(v) => f.set({ status: v })} options={STATUSES} />
-        <Select label="Tipo" value={filters.kind} onChange={(v) => f.set({ kind: v })} options={KINDS} />
-        <Select label="Lab" value={filters.lab} onChange={(v) => f.set({ lab: v })} options={LAB} />
+        <Select label={t('common.status')} value={filters.status} onChange={(v) => f.set({ status: v })} options={STATUSES} />
+        <Select label={t('admin.common.type')} value={filters.kind} onChange={(v) => f.set({ kind: v })} options={KINDS} />
+        <Select label={t('admin.common.lab')} value={filters.lab} onChange={(v) => f.set({ lab: v })} options={LAB} />
       </div>
       {(filters.userId || filters.documentId) && (
         <p className="text-sm">
-          {filters.userId && <>Utente: <Link className="underline" to={`/admin/users/${filters.userId}`}>{filters.userId}</Link>{' '}<button className="underline" onClick={() => f.set({ userId: '' })}>rimuovi</button>{' · '}</>}
-          {filters.documentId && <>Documento: <Link className="underline" to={`/admin/documents/${filters.documentId}`}>{filters.documentId}</Link>{' '}<button className="underline" onClick={() => f.set({ documentId: '' })}>rimuovi</button></>}
+          {filters.userId && <>{t('admin.common.user')}: <Link className="underline" to={`/admin/users/${filters.userId}`}>{filters.userId}</Link>{' '}<button className="underline" onClick={() => f.set({ userId: '' })}>{t('admin.common.remove')}</button>{' · '}</>}
+          {filters.documentId && <>{t('common.document')}: <Link className="underline" to={`/admin/documents/${filters.documentId}`}>{filters.documentId}</Link>{' '}<button className="underline" onClick={() => f.set({ documentId: '' })}>{t('admin.common.remove')}</button></>}
         </p>
       )}
       <Err error={jobs.error} />
-      <Table head={['Data', 'Tipo', 'Stato', 'Modello', 'Crediti', 'Durata', 'Utente', 'Documento']} empty={jobs.data?.items.length === 0 ? 'Nessun job trovato.' : undefined}>
+      <Table head={[t('common.date'), t('admin.common.type'), t('common.status'), t('common.model'), t('admin.common.credits'), t('admin.common.duration'), t('admin.common.user'), t('common.document')]} empty={jobs.data?.items.length === 0 ? t('admin.jobs.none') : undefined}>
         {jobs.data?.items.map((j) => (
           <tr key={j.id}>
             <td className="p-2"><Link to={`/admin/jobs/${j.id}`} className="underline">{fmtDate(j.createdAt)}</Link></td>
-            <td className="p-2">{j.kind}{j.benchmarkId && ' (lab)'}</td>
+            <td className="p-2">{j.kind}{j.benchmarkId && t('admin.common.labTag')}</td>
             <td className={`p-2 ${j.status === 'failed' ? 'text-red-600' : ''}`}>{j.status === 'running' ? `${j.progress}%` : j.status}</td>
             <td className="p-2">{j.modelId ?? j.model ?? ''}</td><td className="p-2">{j.credits}</td><td className="p-2">{fmtDuration(j.durationMs)}</td>
             <td className="p-2"><Link to={`/admin/users/${j.user.id}`} className="underline">{j.user.email}</Link></td>
@@ -70,39 +71,39 @@ export function AdminJobPage() {
 
   const j = job.data;
   if (job.error) return <p className="text-red-600">{job.error.message}</p>;
-  if (!j) return <p>Caricamento…</p>;
+  if (!j) return <p>{t('common.loading')}</p>;
   const usage = usageRows(j.usage);
   return (
     <section className="space-y-5">
       <div>
-        <Link to="/admin/jobs" className="text-sm underline">← Job</Link>
-        <h1 className="text-xl font-semibold">Job {j.kind}{j.benchmarkId && ' (lab)'}</h1>
+        <Link to="/admin/jobs" className="text-sm underline">← {t('admin.nav.jobs')}</Link>
+        <h1 className="text-xl font-semibold">{t('admin.jobs.title', { kind: j.kind })}{j.benchmarkId && t('admin.common.labTag')}</h1>
       </div>
       <dl className="grid grid-cols-2 gap-3 rounded border bg-white p-4 text-sm sm:grid-cols-3">
-        <Field label="Stato"><span className={j.status === 'failed' ? 'text-red-600' : ''}>{j.status} · {j.phase} · {j.progress}%</span></Field>
-        <Field label="Utente"><Link className="underline" to={`/admin/users/${j.user.id}`}>{j.user.email}</Link></Field>
-        <Field label="Documento"><Link className="underline" to={`/admin/documents/${j.document.id}`}>{j.document.filename}</Link></Field>
-        <Field label="Modello">{j.modelId ?? '—'}{j.model && <span className="font-mono text-xs"> ({j.model})</span>}</Field>
-        <Field label="Crediti">{j.credits}</Field><Field label="Tentativi">{j.attempts}</Field>
-        <Field label="Creato">{fmtDate(j.createdAt)}</Field><Field label="Finito">{fmtDate(j.finishedAt)}</Field><Field label="Durata">{fmtDuration(j.durationMs)}</Field>
-        <Field label="Token in / out">{fmtNum(j.inputTokens)} / {fmtNum(j.outputTokens)}</Field><Field label="Costo stimato">{fmtCost(j.costUsd)}</Field>
-        {j.benchmarkId && <Field label="Lab"><Link className="underline" to={`/admin/benchmarks/${j.benchmarkId}`}>apri run</Link></Field>}
+        <Field label={t('common.status')}><span className={j.status === 'failed' ? 'text-red-600' : ''}>{j.status} · {j.phase} · {j.progress}%</span></Field>
+        <Field label={t('admin.common.user')}><Link className="underline" to={`/admin/users/${j.user.id}`}>{j.user.email}</Link></Field>
+        <Field label={t('common.document')}><Link className="underline" to={`/admin/documents/${j.document.id}`}>{j.document.filename}</Link></Field>
+        <Field label={t('common.model')}>{j.modelId ?? '—'}{j.model && <span className="font-mono text-xs"> ({j.model})</span>}</Field>
+        <Field label={t('admin.common.credits')}>{j.credits}</Field><Field label={t('admin.jobs.attempts')}>{j.attempts}</Field>
+        <Field label={t('admin.jobs.created')}>{fmtDate(j.createdAt)}</Field><Field label={t('admin.jobs.finished')}>{fmtDate(j.finishedAt)}</Field><Field label={t('admin.common.duration')}>{fmtDuration(j.durationMs)}</Field>
+        <Field label={t('admin.common.tokensInOut')}>{fmtNum(j.inputTokens)} / {fmtNum(j.outputTokens)}</Field><Field label={t('admin.jobs.estCost')}>{fmtCost(j.costUsd)}</Field>
+        {j.benchmarkId && <Field label={t('admin.common.lab')}><Link className="underline" to={`/admin/benchmarks/${j.benchmarkId}`}>{t('admin.jobs.openRun')}</Link></Field>}
       </dl>
       {j.error && <p className="break-words text-red-600">{j.error}</p>}
       {j.warnings?.length > 0 && (
         <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
-          <p className="font-medium">Avvisi</p>
+          <p className="font-medium">{t('admin.jobs.warnings')}</p>
           <ul className="list-disc pl-5">{j.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
         </div>
       )}
       <div>
-        <h2 className="mb-1 font-medium">Opzioni</h2>
+        <h2 className="mb-1 font-medium">{t('admin.jobs.options')}</h2>
         <pre className="overflow-x-auto rounded border bg-white p-3 text-xs">{JSON.stringify(j.options, null, 2)}</pre>
       </div>
       {usage.length > 0 && (
         <>
-          <h2 className="font-medium">Utilizzo LLM</h2>
-          <Table head={['Fase', 'Chiamate', 'Fallite', 'Token in', 'Token out', 'Durata']}>
+          <h2 className="font-medium">{t('admin.jobs.llmUsage')}</h2>
+          <Table head={[t('admin.common.phase'), t('admin.common.calls'), t('admin.common.failedCalls'), t('admin.common.tokensIn'), t('admin.common.tokensOut'), t('admin.common.duration')]}>
             {usage.map(([phase, u]) => (
               <tr key={phase}>
                 <td className="p-2">{phase}</td><td className="p-2">{fmtNum(u.calls)}</td><td className="p-2">{fmtNum(u.failedCalls)}</td>
@@ -114,8 +115,8 @@ export function AdminJobPage() {
       )}
       {j.ledger?.length > 0 && (
         <>
-          <h2 className="font-medium">Movimenti crediti</h2>
-          <Table head={['Data', 'Tipo', 'Crediti']}>
+          <h2 className="font-medium">{t('admin.jobs.creditLedger')}</h2>
+          <Table head={[t('common.date'), t('admin.common.type'), t('admin.common.credits')]}>
             {j.ledger.map((l) => <tr key={l.id}><td className="p-2">{fmtDate(l.createdAt)}</td><td className="p-2">{l.type}</td><td className="p-2">{l.amount}</td></tr>)}
           </Table>
         </>
@@ -123,8 +124,8 @@ export function AdminJobPage() {
       {done && (
         <div className="space-y-3">
           <div className="flex gap-3">
-            <button onClick={() => download('md')} className="rounded bg-black px-4 py-2 text-white">Scarica .md</button>
-            <button onClick={() => download('docx')} className="rounded bg-black px-4 py-2 text-white">Scarica .docx</button>
+            <button onClick={() => download('md')} className="rounded bg-black px-4 py-2 text-white">{t('admin.jobs.downloadMd')}</button>
+            <button onClick={() => download('docx')} className="rounded bg-black px-4 py-2 text-white">{t('admin.jobs.downloadDocx')}</button>
           </div>
           {error && <p className="text-red-600">{error}</p>}
           {content && <div className="prose-summary rounded border bg-white p-4"><Markdown disallowedElements={['img']}>{content}</Markdown></div>}

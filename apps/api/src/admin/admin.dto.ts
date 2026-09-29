@@ -34,6 +34,14 @@ export class CreateBenchmarkDto extends JobSettingsDto {
   lanes: LaneDto[];
 }
 
+export class RenameBenchmarkDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(80)
+  @Matches(/^[^\r\n]*$/, { message: 'name must be a single line' })
+  name: string;
+}
+
 export class ListBenchmarksDto extends PageQueryDto {}
 
 

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { fmt, t } from './i18n';
 
 export type Preferences = { language?: string; lengthPercent?: number; method?: string; model?: string; fraction?: number /* legacy */ };
 export type Model = { id: string; label: string; multiplier: number };
@@ -46,8 +47,7 @@ export type Pack = { id: string; credits: number; amount: number; currency: stri
 export type BillingPacks = { enabled: boolean; packs: Pack[] };
 export type Stats = { documents: number; summariesDone: number; creditsSpent: number; pagesSummarized: number };
 
-export const formatPrice = (amount: number, currency: string) =>
-  new Intl.NumberFormat(undefined, { style: 'currency', currency: currency.toUpperCase() }).format(amount / 100);
+export const formatPrice = fmt.price;
 
 // Builds "?a=1&b=2", skipping empty values.
 
@@ -58,9 +58,9 @@ export const qs = (params: Record<string, string | number | boolean | null | und
   return s ? `?${s}` : '';
 };
 
-export const LANGUAGES = [['auto', 'Same as the document'], ['en', 'English'], ['it', 'Italian'], ['nl', 'Dutch'], ['fr', 'French'], ['de', 'German'], ['es', 'Spanish']] as const;
+export const LANGUAGES = (['auto', 'en', 'it', 'nl', 'fr', 'de', 'es'] as const).map((v) => [v, t(`languages.${v}`)] as const);
 export const QUICK_LENGTHS = [[33, '1/3'], [20, '1/5'], [10, '1/10']] as const;
-export const EXTRAS = [['glossary', 'Glossary'], ['questions', 'Review questions'], ['takeaways', 'Key takeaways']] as const;
+export const EXTRAS = (['glossary', 'questions', 'takeaways'] as const).map((v) => [v, t(`extras.${v}`)] as const);
 
 const WORDS_PER_CREDIT = 1000;
 // Same integer arithmetic as the API, to avoid ceil(11.000000000000002).
@@ -76,7 +76,7 @@ export const lengthOf = (p?: Preferences) => p?.lengthPercent ?? (p?.fraction ? 
 
 export const modelOptions = (models: Model[] = []) =>
   models.map((m) => [m.id, m.multiplier !== 1 ? `${m.label} (×${m.multiplier})` : m.label] as const);
-export const PRESETS = [['studio', 'Study summary (continuous prose)'], ['schematico', 'Structured notes (bullet points)'], ['abstract', 'Short abstract']] as const;
+export const PRESETS = (['studio', 'schematico', 'abstract'] as const).map((v) => [v, t(`presets.${v}`)] as const);
 
 // Style select options: optional leading entries, the 3 presets, then the user's custom methods.
 export const styleOptions = (methods: Method[] = [], first: readonly (readonly [string, string])[] = []) =>
@@ -88,7 +88,7 @@ export function methodLabel(options: Record<string, unknown>, methods: Method[] 
   const preset = PRESETS.find(([v]) => v === id);
   if (preset) return preset[1];
   if (typeof options.methodName === 'string') return options.methodName;
-  return methods.find((m) => `custom:${m.id}` === id)?.name ?? 'Custom (deleted)';
+  return methods.find((m) => `custom:${m.id}` === id)?.name ?? t('api.customDeleted');
 }
 
 export const pageCount = (p: Page<unknown>) => Math.max(1, Math.ceil(p.total / p.pageSize));
@@ -104,12 +104,12 @@ export const busy = (d: Doc) =>
   (d.status === 'uploaded' && !uploadFailed(d)) || d.jobs.some((j) => j.status === 'queued' || j.status === 'running');
 
 export function docStatus(d: Doc) {
-  if (d.status === 'uploaded') return uploadFailed(d) ? 'Upload failed — please upload the file again' : 'Analyzing…';
-  if (d.status === 'rejected') return `Rejected: ${d.rejectReason}`;
+  if (d.status === 'uploaded') return uploadFailed(d) ? t('api.uploadFailed') : t('api.analyzing');
+  if (d.status === 'rejected') return t('api.rejected', { reason: d.rejectReason ?? '' });
   const job = d.jobs[0];
-  if (!job) return `${d.pages} pages · ${d.credits} credits`;
-  if (job.status === 'done') return 'Done';
-  if (job.status === 'failed') return 'Failed';
+  if (!job) return t('api.pagesCredits', { pages: d.pages ?? '', credits: d.credits ?? '' });
+  if (job.status === 'done') return t('common.done');
+  if (job.status === 'failed') return t('common.failed');
   return `${job.progress}%`;
 }
 
@@ -236,7 +236,7 @@ export function useReorderAdminModels() {
 export const laneActive = (l: Lane) => l.status === 'queued' || l.status === 'running';
 
 export const priceHint = (m: AdminModel) =>
-  m.priceIn === null && m.priceOut === null ? 'no price' : `$${m.priceIn ?? '?'} in / $${m.priceOut ?? '?'} out per 1M`;
+  m.priceIn === null && m.priceOut === null ? t('adminLab.noPrice') : t('adminLab.priceHint', { in: m.priceIn ?? '?', out: m.priceOut ?? '?' });
 
 export const usePacks = () => useQuery({ queryKey: ['packs'], queryFn: () => api<BillingPacks>('/billing/packs') });
 
@@ -246,6 +246,6 @@ export async function uploadFile(file: File) {
     body: JSON.stringify({ filename: file.name, sizeBytes: file.size }),
   });
   const put = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': 'application/pdf' } });
-  if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+  if (!put.ok) throw new Error(t('api.uploadFailedStatus', { status: put.status }));
   await api(`/documents/${document.id}/uploaded`, { method: 'POST' });
 }

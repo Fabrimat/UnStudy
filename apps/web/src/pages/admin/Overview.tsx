@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAdminStats } from '../../api';
+import { t } from '../../i18n';
 import { Chart } from './charts';
 import { Err, fmtCost, fmtDuration, fmtNum, Table } from './ui';
 
@@ -12,30 +13,30 @@ export default function AdminOverview() {
   const s = d?.series ?? [];
   const col = (k: keyof (typeof s)[number]) => s.map((r) => Number(r[k]));
   const labels = s.map((r) => r.day);
-  const t = d?.totals;
-  const cards: [string, string][] = t
+  const tot = d?.totals;
+  const cards: [string, string][] = tot
     ? [
-        ['Utenti', fmtNum(t.users)], ['Attivi (30 giorni)', fmtNum(t.activeUsers30d)], ['Documenti', fmtNum(t.documents)],
-        ['Job in coda / in corso', `${t.jobs.queued} / ${t.jobs.running}`], ['Job completati', fmtNum(t.jobs.done)], ['Job falliti', fmtNum(t.jobs.failed)],
-        ['Crediti acquistati', fmtNum(t.creditsPurchased)], ['Crediti regalati', fmtNum(t.creditsGranted)], ['Crediti revocati', fmtNum(t.creditsRevoked)],
-        ['Crediti spesi', fmtNum(t.creditsSpent)], ['Crediti in circolazione', fmtNum(t.creditsOutstanding)],
-        ['Chiamate LLM (fallite)', `${fmtNum(t.llm.calls)} (${fmtNum(t.llm.failedCalls)})`],
-        ['Token in / out', `${fmtNum(t.llm.inputTokens)} / ${fmtNum(t.llm.outputTokens)}`], ['Costo LLM stimato', fmtCost(t.llm.costUsd)],
+        [t('admin.overview.users'), fmtNum(tot.users)], [t('admin.overview.activeUsers'), fmtNum(tot.activeUsers30d)], [t('admin.common.documents'), fmtNum(tot.documents)],
+        [t('admin.overview.jobsQueuedRunning'), `${tot.jobs.queued} / ${tot.jobs.running}`], [t('admin.overview.jobsDone'), fmtNum(tot.jobs.done)], [t('admin.overview.jobsFailed'), fmtNum(tot.jobs.failed)],
+        [t('admin.overview.creditsPurchased'), fmtNum(tot.creditsPurchased)], [t('admin.overview.creditsGranted'), fmtNum(tot.creditsGranted)], [t('admin.overview.creditsRevoked'), fmtNum(tot.creditsRevoked)],
+        [t('admin.overview.creditsSpent'), fmtNum(tot.creditsSpent)], [t('admin.overview.creditsOutstanding'), fmtNum(tot.creditsOutstanding)],
+        [t('admin.overview.llmCalls'), `${fmtNum(tot.llm.calls)} (${fmtNum(tot.llm.failedCalls)})`],
+        [t('admin.common.tokensInOut'), `${fmtNum(tot.llm.inputTokens)} / ${fmtNum(tot.llm.outputTokens)}`], [t('admin.overview.llmCost'), fmtCost(tot.llm.costUsd)],
       ]
     : [];
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Panoramica</h1>
+        <h1 className="text-xl font-semibold">{t('admin.nav.overview')}</h1>
         <label className="text-sm">
-          Periodo{' '}
+          {t('admin.overview.period')}{' '}
           <select className="rounded border bg-white p-1" value={days} onChange={(e) => setDays(Number(e.target.value))}>
-            {DAYS.map((n) => <option key={n} value={n}>{n} giorni</option>)}
+            {DAYS.map((n) => <option key={n} value={n}>{t('admin.overview.days', { n })}</option>)}
           </select>
         </label>
       </div>
       <Err error={stats.error} />
-      {stats.isPending && <p>Caricamento…</p>}
+      {stats.isPending && <p>{t('common.loading')}</p>}
       {d && (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -47,13 +48,13 @@ export default function AdminOverview() {
             ))}
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            <Chart title="Nuovi utenti" kind="bar" days={labels} series={[{ name: 'Iscrizioni', color: '#2563eb', values: col('signups') }]} />
-            <Chart title="Job (per giorno)" kind="bar" days={labels} series={[{ name: 'Completati', color: '#16a34a', values: col('jobsDone') }, { name: 'Falliti', color: '#dc2626', values: col('jobsFailed') }]} />
-            <Chart title="Crediti" kind="line" days={labels} series={[{ name: 'Spesi', color: '#d97706', values: col('creditsSpent') }, { name: 'Acquistati', color: '#2563eb', values: col('creditsPurchased') }]} />
-            <Chart title="Token" kind="line" days={labels} series={[{ name: 'Input', color: '#7c3aed', values: col('inputTokens') }, { name: 'Output', color: '#0891b2', values: col('outputTokens') }]} />
+            <Chart title={t('admin.overview.newUsers')} kind="bar" days={labels} series={[{ name: t('admin.overview.signups'), color: '#2563eb', values: col('signups') }]} />
+            <Chart title={t('admin.overview.jobsPerDay')} kind="bar" days={labels} series={[{ name: t('admin.overview.completed'), color: '#16a34a', values: col('jobsDone') }, { name: t('admin.overview.failed'), color: '#dc2626', values: col('jobsFailed') }]} />
+            <Chart title={t('admin.overview.chartCredits')} kind="line" days={labels} series={[{ name: t('admin.overview.spent'), color: '#d97706', values: col('creditsSpent') }, { name: t('admin.overview.purchased'), color: '#2563eb', values: col('creditsPurchased') }]} />
+            <Chart title={t('admin.overview.tokens')} kind="line" days={labels} series={[{ name: t('admin.overview.input'), color: '#7c3aed', values: col('inputTokens') }, { name: t('admin.overview.output'), color: '#0891b2', values: col('outputTokens') }]} />
           </div>
-          <h2 className="font-medium">Modelli nel periodo</h2>
-          <Table head={['Modello', 'Provider', 'Chiamate', 'Fallite', 'Token in', 'Token out', 'Durata media', 'Costo']} empty={d.models.length ? undefined : 'Nessuna chiamata nel periodo.'}>
+          <h2 className="font-medium">{t('admin.overview.modelsInPeriod')}</h2>
+          <Table head={[t('common.model'), t('admin.common.provider'), t('admin.common.calls'), t('admin.common.failedCalls'), t('admin.common.tokensIn'), t('admin.common.tokensOut'), t('admin.overview.avgDuration'), t('admin.common.cost')]} empty={d.models.length ? undefined : t('admin.overview.noCalls')}>
             {d.models.map((m) => (
               <tr key={`${m.provider}/${m.modelId}`}>
                 <td className="p-2 font-mono">{m.modelId}</td><td className="p-2">{m.provider}</td>

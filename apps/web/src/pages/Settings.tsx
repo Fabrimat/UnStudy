@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Select from '../Select';
 import LengthPicker from '../LengthPicker';
 import { api, LANGUAGES, lengthOf, modelOptions, Preferences, styleOptions, useMe, useMethods, useModels } from '../api';
+import { t } from '../i18n';
 
 export default function Settings() {
   const qc = useQueryClient();
@@ -22,15 +23,15 @@ export default function Settings() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">Settings</h1>
-      <p className="text-sm text-gray-600">Defaults for new summaries.</p>
+      <h1 className="text-xl font-semibold">{t('nav.settings')}</h1>
+      <p className="text-sm text-gray-600">{t('settings.defaults')}</p>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Select label="Language" value={prefs.language ?? 'auto'} onChange={(language) => save.mutate({ language })} options={LANGUAGES} />
-        <Select label="Style" value={method} onChange={(m) => save.mutate({ method: m })} options={options} />
-        {models && models.length > 1 && model && <Select label="Model" value={model} onChange={(m) => save.mutate({ model: m })} options={modelOptions(models)} />}
+        <Select label={t('common.language')} value={prefs.language ?? 'auto'} onChange={(language) => save.mutate({ language })} options={LANGUAGES} />
+        <Select label={t('common.style')} value={method} onChange={(m) => save.mutate({ method: m })} options={options} />
+        {models && models.length > 1 && model && <Select label={t('common.model')} value={model} onChange={(m) => save.mutate({ model: m })} options={modelOptions(models)} />}
       </div>
       <LengthPicker value={lengthOf(prefs)} onChange={(lengthPercent) => save.mutate({ lengthPercent, fraction: null })} />
-      {save.isSuccess && <p className="text-green-700">Saved</p>}
+      {save.isSuccess && <p className="text-green-700">{t('settings.saved')}</p>}
       {save.error && <p className="text-red-600">{save.error.message}</p>}
     </section>
   );

@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { api } from '../api';
+import { t } from '../i18n';
 
 export default function Verify() {
   const [params] = useSearchParams();
@@ -16,7 +17,7 @@ export default function Verify() {
     api('/auth/magic-link/verify', { method: 'POST', body: JSON.stringify({ token: params.get('token') ?? '' }) })
       .then(() => qc.invalidateQueries({ queryKey: ['me'] }))
       .then(() => navigate('/', { replace: true }))
-      .catch(() => setError('This login link is invalid or has expired.'));
+      .catch(() => setError(t('verify.invalid')));
   }, [params, navigate, qc]);
 
   return (
@@ -24,10 +25,10 @@ export default function Verify() {
       {error ? (
         <>
           <p>{error}</p>
-          <Link to="/login" className="underline">Request a new link</Link>
+          <Link to="/login" className="underline">{t('verify.requestNew')}</Link>
         </>
       ) : (
-        <p>Logging in…</p>
+        <p>{t('verify.loggingIn')}</p>
       )}
     </main>
   );

@@ -167,6 +167,26 @@ describe('admin lab', () => {
     expect(lanes[1].costUsd).toBeNull(); // 'lab' has no prices
   });
 
+  it('renames a benchmark, even while running; rejects multi-line names and other callers', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, name: 'Old', ...SETTINGS, lanes: LANES }).expect(201);
+    const patch = (cookie: string, id: string, body: object) => http().patch(`/api/admin/benchmarks/${id}`).set('Origin', ORIGIN).set('Cookie', cookie).send(body);
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'running' } });
+    expect((await patch(a.cookie, res.body.id, { name: '  New name ' }).expect(200)).body.name).toBe('New name');
+    const got = (await http().get(`/api/admin/benchmarks/${res.body.id}`).set('Cookie', a.cookie).expect(200)).body;
+    expect(got.name).toBe('New name');
+    expect(got.options.lanes).toHaveLength(2);
+    await patch(a.cookie, res.body.id, { name: 'a\nb' }).expect(400);
+    await patch(a.cookie, res.body.id, { name: 'x'.repeat(81) }).expect(400);
+    expect((await patch(a.cookie, res.body.id, { name: '' }).expect(200)).body.name).toBeNull();
+    await patch(a.cookie, '00000000-0000-4000-8000-000000000000', { name: 'x' }).expect(404);
+    const u = await loginAs(app, 'u@x.com');
+    await patch(u.cookie, res.body.id, { name: 'x' }).expect(404);
+    const b = await admin('b@x.com');
+    await patch(b.cookie, res.body.id, { name: 'x' }).expect(404);
+  });
+
   it('refuses to delete a running benchmark, otherwise deletes files and rows', async () => {
     const a = await admin();
     const d = await doc(a.user.id);
