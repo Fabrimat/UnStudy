@@ -27,7 +27,8 @@ export class MailService {
       });
       if (!res.ok) throw new Error(`Resend answered ${res.status}: ${await res.text()}`);
     } catch (e) {
-      this.logger.error(`Could not send email: ${(e as Error).message}`);
+      // provider errors can echo the recipient: keep the domain only
+      this.logger.error(`Could not send email: ${(e as Error).message.replace(/[^\s@<>"':,]+@/g, '***@')}`);
       throw new ServiceUnavailableException('Could not send the email, please try again later');
     }
   }

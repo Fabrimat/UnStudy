@@ -1,8 +1,11 @@
 """OpenAI-compatible streaming client (NVIDIA in dev, Anthropic's OpenAI-compatible endpoint in prod)."""
+import logging
 import time
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Callable
+
+log = logging.getLogger(__name__)
 
 DEFAULT_REPLY = ("# Fake Summary\n\n**Fake Author** – Fake Source\n\n---\n\n## Introduction\n\n"
                  + "This is a generated test summary. " * 20 + "\n\n---\n\n## Conclusion\n\nEnd.")
@@ -48,6 +51,7 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
     for attempt in range(attempts):
         if on_tokens:
             on_tokens(0)  # heartbeat at the start of every attempt, so a slow/failing call still heartbeats
+        start = time.time()
         try:
             stream = client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens,
                                                     temperature=0.4, stream=True,
@@ -65,15 +69,17 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
                 if choice.delta.content:
                     parts.append(choice.delta.content)
                 if choice.finish_reason == "length":
-                    print(f"warning: output truncated at max_tokens={max_tokens}")
+                    log.warning(f"output truncated at max_tokens={max_tokens}")
             if usage is not None and final_usage is not None:
                 usage.input_tokens += final_usage.prompt_tokens or 0
                 usage.output_tokens += final_usage.completion_tokens or 0
+            log.debug(f"llm call model={model} duration={time.time() - start:.1f}s "
+                     f"in={getattr(final_usage, 'prompt_tokens', None)} out={getattr(final_usage, 'completion_tokens', None)}")
             return "".join(parts).strip()
         except Exception as e:
             if attempt == attempts - 1:
                 raise
             wait = 2 ** attempt
-            print(f"LLM error ({e}); retrying in {wait}s")
+            log.warning(f"LLM error ({e}); retrying in {wait}s")
             time.sleep(wait)
     raise RuntimeError("unreachable")

@@ -87,6 +87,7 @@ Any other OpenAI-compatible provider works too. Check that its terms allow use i
 | `LLM_BASE_URL` | | ✓ | see LLM |
 | `LLM_API_KEY` | | ✓ | see LLM |
 | `LLM_MODEL` | | ✓ | see LLM |
+| `LOG_LEVEL` | ✓ | ✓ | `info` (optional; `debug`, `warn`, `error`) |
 
 `NODE_ENV=production` is already set in the API image; it turns on `Secure` cookies. Database migrations run automatically before each API deploy (the pre-deploy command).
 

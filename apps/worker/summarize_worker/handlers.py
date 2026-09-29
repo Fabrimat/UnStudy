@@ -1,4 +1,5 @@
-import traceback
+import logging
+import time
 
 from . import db
 from .docx import to_docx
@@ -10,6 +11,8 @@ from .text import Chapter, clean_pages, extract_pages, inspect_pdf, split_chapte
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PAGES = 400
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+log = logging.getLogger(__name__)
 
 
 class Rejected(Exception):
@@ -42,29 +45,36 @@ def read_chapters(pdf: bytes, ocr_langs: str | None, on_page=None) -> tuple[list
     chapters = split_chapters(clean_pages(pages), toc)
     if not chapters:
         raise Rejected("No text found in the PDF, even with OCR")
+    log.info(f"extracted {pages_count} pages, {sum(c.words for c in chapters)} words, "
+            f"ocr={used_ocr}, {len(chapters)} chapter(s)")
     return chapters, pages_count, used_ocr
 
 
 def _page_heartbeat(conn, job_id, analyze: bool, attempts: int):
     # extraction with OCR can outlast the 10-minute stale window, so every page updates the heartbeat
     def on_page(i: int, n: int):
+        log.debug(f"heartbeat: job {job_id} page {i}/{n}")
         db.progress(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}", attempts)
     return on_page
 
 
 def handle_analyze(conn, storage, settings, job: dict) -> None:
+    start = time.monotonic()
     doc = db.get_document(conn, job["documentId"])
     try:
         chapters, pages, used_ocr = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
                                                   _page_heartbeat(conn, job["id"], analyze=True, attempts=job["attempts"]))
     except Rejected as e:
         db.reject_document(conn, job, str(e))
+        log.warning(f"analyze job {job['id']} rejected: {e}")
         return
     db.finish_analyze(conn, job, pages=pages, words=sum(c.words for c in chapters), used_ocr=used_ocr,
                       chapters=[c.as_json() for c in chapters])
+    log.info(f"analyze job {job['id']} succeeded in {time.monotonic() - start:.1f}s")
 
 
 def handle_summarize(conn, storage, settings, client, job: dict) -> None:
+    start = time.monotonic()
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
                                    _page_heartbeat(conn, job["id"], analyze=False, attempts=job["attempts"]))
@@ -84,6 +94,8 @@ def handle_summarize(conn, storage, settings, client, job: dict) -> None:
     storage.put(f"{prefix}.docx", to_docx(markdown), DOCX_MIME)
     db.finish_summary(conn, job, md_key=f"{prefix}.md", docx_key=f"{prefix}.docx", warnings=warnings,
                       input_tokens=usage.input_tokens, output_tokens=usage.output_tokens)
+    log.info(f"summarize job {job['id']} succeeded in {time.monotonic() - start:.1f}s "
+            f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
 
 def process(conn, storage, settings, client, job: dict) -> None:
@@ -93,8 +105,10 @@ def process(conn, storage, settings, client, job: dict) -> None:
         else:
             handle_summarize(conn, storage, settings, client, job)
     except FileChanged:
-        traceback.print_exc()  # details stay in the worker log; the user sees db.SUMMARY_ERROR
+        log.error(f"job {job['id']} failed (file changed after pricing, refunded, no retry)", exc_info=True)
         db.fail(conn, job)
     except Exception:
-        traceback.print_exc()  # details stay in the worker log; the user sees db.SUMMARY_ERROR / ANALYZE_ERROR
+        retry = job["attempts"] < db.MAX_ATTEMPTS
+        outcome = "will retry" if retry else "refunded" if job["kind"] == "summarize" else "rejected"
+        log.error(f"job {job['id']} failed ({outcome})", exc_info=True)  # user sees db.SUMMARY_ERROR / ANALYZE_ERROR
         db.fail_or_retry(conn, job)

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { User } from '@summarize/db';
 import { creditsFor } from '../credits/credits';
 import { LedgerService } from '../credits/ledger.service';
@@ -10,11 +10,13 @@ import { MAX_ACTIVE_SUMMARIES } from './options';
 
 @Injectable()
 export class JobsService {
+  private logger = new Logger(JobsService.name);
+
   constructor(private prisma: PrismaService, private ledger: LedgerService, private storage: StorageService) {}
 
-  create(user: User, dto: CreateJobDto) {
+  async create(user: User, dto: CreateJobDto) {
     const { documentId, ...options } = dto;
-    return this.prisma.$transaction(async (tx) => {
+    const job = await this.prisma.$transaction(async (tx) => {
       // Row lock on the user serialises concurrent starts, so the balance check below cannot race.
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
       const doc = await tx.document.findFirst({ where: { id: documentId, userId: user.id } });
@@ -26,11 +28,16 @@ export class JobsService {
       if (active >= MAX_ACTIVE_SUMMARIES) throw new HttpException(`You already have ${MAX_ACTIVE_SUMMARIES} summaries in progress`, 429);
       const credits = creditsFor(doc.words);
       const balance = await this.ledger.balance(user.id, tx);
-      if (balance < credits) throw new HttpException({ message: 'Not enough credits', needed: credits, balance }, 402);
+      if (balance < credits) {
+        this.logger.warn(`Not enough credits: user ${user.id}, needed ${credits}, balance ${balance}`);
+        throw new HttpException({ message: 'Not enough credits', needed: credits, balance }, 402);
+      }
       const job = await tx.job.create({ data: { userId: user.id, documentId, kind: 'summarize', options, credits } });
       await tx.creditLedger.create({ data: { userId: user.id, type: 'reserve', amount: -credits, jobId: job.id } });
       return toJobDto(job);
     });
+    this.logger.log(`Job created: ${job.id}, ${job.credits} credits reserved`);
+    return job;
   }
 
   async get(user: User, id: string) {

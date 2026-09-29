@@ -1,10 +1,13 @@
 """Draft -> fact-check -> format -> checks, one chapter at a time (from legacy riassumi_con_istruzioni)."""
+import logging
 from typing import Callable
 
 from .checks import fix_format, run_checks
 from .llm import Usage, call_model
 from .prompts import FRACTION_NAMES, VERIFY_INSTRUCTIONS
 from .text import Chapter
+
+log = logging.getLogger(__name__)
 
 
 def _header(line: str | None, chapter: Chapter) -> str | None:
@@ -43,9 +46,11 @@ def summarize_chapters(client, model: str, chapters: list[Chapter], instructions
             prompt += f"Use exactly this bibliographic line under the title:\n{header}\n\n"
         prompt += f"Reading to summarize:\n\n{chapter.text}"
         step = i * phases
+        log.info(f"{label}: draft")
         text = fix_format(call_model(client, model, prompt, system=instructions, usage=usage,
                                      on_tokens=progress(step, f"{label}: draft", target)), header)
         if verify:
+            log.info(f"{label}: fact-check")
             checked = call_model(client, model,
                                  f"ORIGINAL TEXT:\n\n{chapter.text}\n\n=====\n\nDRAFT SUMMARY:\n\n{text}",
                                  system=VERIFY_INSTRUCTIONS, usage=usage,

@@ -1,7 +1,8 @@
-import { HttpException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { AuthProvider, User } from '@summarize/db';
 import { config } from '../config';
 import { PrismaService } from '../prisma.service';
+import { maskEmail } from './mask-email';
 import { MailService } from './mail.service';
 import { randomToken, sha256 } from './tokens';
 
@@ -13,6 +14,8 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 @Injectable()
 export class AuthService {
+  private logger = new Logger(AuthService.name);
+
   constructor(private prisma: PrismaService, private mail: MailService) {}
 
   async requestMagicLink(rawEmail: string) {
@@ -25,11 +28,15 @@ export class AuthService {
       const recent = await tx.magicLinkToken.count({
         where: { email, createdAt: { gt: new Date(Date.now() - 3600_000) } },
       });
-      if (recent >= MAX_LINKS_PER_HOUR) throw new HttpException('Too many login links requested, try again later', 429);
+      if (recent >= MAX_LINKS_PER_HOUR) {
+        this.logger.warn(`Login link rate-limited: ${maskEmail(email)}`);
+        throw new HttpException('Too many login links requested, try again later', 429);
+      }
       await tx.magicLinkToken.create({
         data: { tokenHash: sha256(token), email, expiresAt: new Date(Date.now() + MAGIC_LINK_TTL_MS) },
       });
     });
+    this.logger.log(`Login link requested: ${maskEmail(email)}`);
     // Sent after the transaction commits so SMTP latency never holds the advisory lock.
     // The link opens a web page that POSTs the token: mail scanners that prefetch GET links cannot burn it.
     const link = `${config.webOrigin}/auth/verify?token=${token}`;
@@ -49,7 +56,9 @@ export class AuthService {
     if (count !== 1) throw new UnauthorizedException('Invalid or expired link');
     const { email } = await this.prisma.magicLinkToken.findUniqueOrThrow({ where: { tokenHash } });
     const user = await this.loginWithProvider('email', email, email, true);
-    return this.createSession(user.id);
+    const session = await this.createSession(user.id);
+    this.logger.log(`Login succeeded (magic link): user ${user.id}`);
+    return session;
   }
 
   async loginWithProvider(provider: AuthProvider, providerAccountId: string, rawEmail: string, emailVerified: boolean): Promise<User> {
@@ -84,6 +93,8 @@ export class AuthService {
   }
 
   async logout(token?: string) {
-    if (token) await this.prisma.session.deleteMany({ where: { id: sha256(token) } });
+    if (!token) return;
+    const { count } = await this.prisma.session.deleteMany({ where: { id: sha256(token) } });
+    if (count) this.logger.log('Logout');
   }
 }

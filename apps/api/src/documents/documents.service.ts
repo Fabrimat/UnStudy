@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Document, Job, User } from '@summarize/db';
 import { randomUUID } from 'node:crypto';
 import { creditsFor } from '../credits/credits';
@@ -27,16 +27,22 @@ export function toDocDto(doc: Document & { jobs?: Job[]; _count?: { jobs: number
 
 @Injectable()
 export class DocumentsService {
+  private logger = new Logger(DocumentsService.name);
+
   constructor(private prisma: PrismaService, private storage: StorageService) {}
 
   async create(user: User, filename: string, sizeBytes: number) {
     const recent = await this.prisma.document.count({
       where: { userId: user.id, createdAt: { gt: new Date(Date.now() - 3600_000) } },
     });
-    if (recent >= MAX_UPLOADS_PER_HOUR) throw new HttpException('Upload limit reached, try again in an hour', 429);
+    if (recent >= MAX_UPLOADS_PER_HOUR) {
+      this.logger.warn(`Upload limit reached: user ${user.id}`);
+      throw new HttpException('Upload limit reached, try again in an hour', 429);
+    }
     const id = randomUUID();
     const s3Key = `users/${user.id}/documents/${id}.pdf`;
     const doc = await this.prisma.document.create({ data: { id, userId: user.id, filename, sizeBytes, s3Key } });
+    this.logger.log(`Upload URL issued: doc ${id}, ${sizeBytes} bytes`);
     return { document: toDocDto(doc), uploadUrl: await this.storage.uploadUrl(s3Key, sizeBytes) };
   }
 
@@ -63,7 +69,11 @@ export class DocumentsService {
       await tx.job.create({ data: { userId: user.id, documentId: id, kind: 'analyze' } });
       return { rejected: false as const, doc };
     });
-    if (result.rejected) throw new BadRequestException('Uploaded file does not match the declared size');
+    if (result.rejected) {
+      this.logger.warn(`Document rejected: doc ${id}, size mismatch`);
+      throw new BadRequestException('Uploaded file does not match the declared size');
+    }
+    this.logger.log(`Document confirmed: doc ${id}`);
     return toDocDto({ ...result.doc, _count: { jobs: 1 } }); // the analyze job was just created above
   }
 

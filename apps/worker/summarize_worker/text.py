@@ -1,9 +1,12 @@
 """PDF text extraction and chapter splitting (ported from legacy/riassumi_libro.py)."""
+import logging
 import re
 from dataclasses import dataclass
 from typing import Callable
 
 import fitz  # PyMuPDF
+
+log = logging.getLogger(__name__)
 
 CHAPTER_HEADING = re.compile(r"^\s*(cap(itolo)?\.?\s*\d+|chapter\s*\d+|parte\s+[ivxlcdm\d]+)\b", re.IGNORECASE)
 MAX_OCR_PIXELS = 40_000_000  # bound the rendered bitmap so a huge PDF page can't exhaust memory
@@ -78,7 +81,7 @@ def _ocr(page, langs: str) -> str:
         pix = page.get_pixmap(dpi=dpi)  # rendered by PyMuPDF: no poppler needed
         return pytesseract.image_to_string(Image.frombytes("RGB", (pix.width, pix.height), pix.samples), lang=langs)
     except Exception as e:  # tesseract missing or failing: keep the text layer
-        print(f"OCR failed on page {page.number + 1}: {e}")
+        log.warning(f"OCR failed on page {page.number + 1}: {e}")
         return ""
 
 

@@ -1,8 +1,12 @@
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"  # repo root in development; absent in production
+
+LOG_LEVELS = {"debug": logging.DEBUG, "info": logging.INFO, "warn": logging.WARNING,
+             "warning": logging.WARNING, "error": logging.ERROR}
 
 
 def load_env(path: Path) -> None:
@@ -11,6 +15,13 @@ def load_env(path: Path) -> None:
         key, sep, value = line.partition("=")
         if sep and not key.strip().startswith("#"):
             os.environ.setdefault(key.strip(), value.strip().strip('"\''))
+
+
+def parse_log_level(raw: str) -> int:
+    try:
+        return LOG_LEVELS[raw.strip().lower()]
+    except KeyError:
+        raise ValueError(f"invalid LOG_LEVEL {raw!r}, expected one of {sorted(LOG_LEVELS)}") from None
 
 
 @dataclass(frozen=True)
@@ -26,6 +37,7 @@ class Settings:
     llm_model: str
     ocr_langs: str | None
     s3_force_path_style: bool = True  # False for virtual-hosted buckets (e.g. Railway, AWS)
+    log_level: int = logging.INFO
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,4 +56,5 @@ class Settings:
             llm_model=e["LLM_MODEL"],
             ocr_langs=e.get("OCR_LANGS") or None,
             s3_force_path_style=e.get("S3_FORCE_PATH_STYLE", "true") == "true",
+            log_level=parse_log_level(e.get("LOG_LEVEL", "info")),
         )

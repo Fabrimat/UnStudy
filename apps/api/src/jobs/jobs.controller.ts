@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { User } from '@summarize/db';
 import { Response } from 'express';
 import { CurrentUser, SessionGuard } from '../auth/session.guard';
@@ -8,6 +8,8 @@ import { JobsService } from './jobs.service';
 @Controller('jobs')
 @UseGuards(SessionGuard)
 export class JobsController {
+  private logger = new Logger(JobsController.name);
+
   constructor(private jobs: JobsService) {}
 
   @Post()
@@ -29,6 +31,7 @@ export class JobsController {
   @Get(':id/events')
   async events(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const first = await this.jobs.get(user, id); // throws 404 before any header is sent
+    this.logger.debug(`SSE opened: job ${id}`);
     res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.flushHeaders();
     let last = '';
@@ -38,6 +41,7 @@ export class JobsController {
       last = data;
       return job.status === 'done' || job.status === 'failed';
     };
+    res.on('close', () => this.logger.debug(`SSE closed: job ${id}`));
     if (send(first)) return res.end();
     const timer = setInterval(async () => {
       try {
@@ -45,7 +49,8 @@ export class JobsController {
           clearInterval(timer);
           res.end();
         }
-      } catch {
+      } catch (e) {
+        this.logger.warn(`SSE poll failed: job ${id}: ${(e as Error).message}`);
         clearInterval(timer);
         res.end();
       }

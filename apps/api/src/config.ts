@@ -1,3 +1,4 @@
+import { LogLevel } from '@nestjs/common';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -12,8 +13,19 @@ function need(name: string): string {
   return value;
 }
 
+const LOG_LEVELS: Record<string, LogLevel[]> = {
+  debug: ['error', 'warn', 'log', 'debug', 'verbose'],
+  info: ['error', 'warn', 'log'],
+  warn: ['error', 'warn'],
+  error: ['error'],
+};
+const logLevel = (process.env.LOG_LEVEL || 'info').trim().toLowerCase();
+if (!LOG_LEVELS[logLevel]) throw new Error(`Invalid LOG_LEVEL ${logLevel}, expected debug|info|warn|error`);
+
 export const config = {
   webOrigin: need('WEB_ORIGIN'),
+  logLevel,
+  logLevels: LOG_LEVELS[logLevel],
   s3: {
     endpoint: process.env.S3_ENDPOINT || undefined,
     region: need('S3_REGION'),
