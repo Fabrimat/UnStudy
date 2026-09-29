@@ -61,6 +61,8 @@ Any other OpenAI-compatible provider works too. Check that its terms allow use i
 
 `LLM_PROVIDERS` is a JSON list of providers; `LLM_MODELS` entries pick one with `provider` (default: the first). Keys are never in the JSON: `apiKeyEnv` names the environment variable that holds the key, and the worker refuses to start if that variable is missing.
 
+On the API, `LLM_PROVIDERS` (ids, baseUrls and `apiKeyEnv` names only, never keys) seeds the provider table on first boot; without it (and without `LLM_BASE_URL`) create providers in **Admin → Providers**. Afterwards providers are edited there; on the worker, database rows override its env providers by id (env ones keep working until the database defines them). Keys stay on the worker as `LLM_KEY_<ID>` (id upper-cased, `-` becomes `_`), or via `apiKeyEnv` in the worker's `LLM_PROVIDERS`.
+
 ```
 LLM_PROVIDERS=[{"id":"anthropic","baseUrl":"https://api.anthropic.com/v1/","apiKeyEnv":"ANTHROPIC_API_KEY"},{"id":"openai","baseUrl":"https://api.openai.com/v1","apiKeyEnv":"OPENAI_API_KEY","tokenParam":"max_completion_tokens","maxConcurrency":4}]
 LLM_MODELS=[{"id":"sonnet","label":"Sonnet","model":"claude-sonnet-5","multiplier":1,"provider":"anthropic"},{"id":"gpt5","label":"GPT-5","model":"gpt-5","multiplier":2,"provider":"openai","temperature":null,"priceIn":1.25,"priceOut":10,"adminOnly":true}]

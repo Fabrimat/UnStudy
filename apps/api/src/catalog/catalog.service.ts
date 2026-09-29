@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ModelPreset, Prisma } from '@summarize/db';
 import { config, ModelEntry } from '../config';
 import { PrismaService } from '../prisma.service';
@@ -29,6 +29,9 @@ const toEntry = (r: ModelPreset): CatalogEntry => ({
 // Editable model catalog (ModelPreset). An empty table is seeded from the LLM_MODELS env catalog on first read.
 @Injectable()
 export class CatalogService {
+  private logger = new Logger(CatalogService.name);
+  private warned = false;
+
   constructor(private prisma: PrismaService) {}
 
   invalidate() {
@@ -37,6 +40,15 @@ export class CatalogService {
 
   // Idempotent and multi-instance safe: skipDuplicates. Also called inside admin write transactions.
   async ensureSeeded(tx: Prisma.TransactionClient = this.prisma) {
+    if (config.providers.length && !(await tx.llmProvider.count())) {
+      await tx.llmProvider.createMany({
+        data: config.providers.map((p) => ({ id: p.id, baseUrl: p.baseUrl, tokenParam: p.tokenParam, maxConcurrency: p.maxConcurrency ?? null })),
+        skipDuplicates: true,
+      });
+    } else if (!config.providers.length && !this.warned) {
+      this.warned = true;
+      this.logger.warn('No LLM_PROVIDERS/LLM_BASE_URL on the API: create providers in Admin -> Providers');
+    }
     if (await tx.modelPreset.count()) return;
     await tx.modelPreset.createMany({
       data: config.models.map((m, position) => ({

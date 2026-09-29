@@ -34,10 +34,14 @@ export type ProviderEntry = {
 const ID_RE = /^[a-z0-9-]{1,32}$/;
 const isObj = (e: unknown): e is Record<string, unknown> => !!e && typeof e === 'object' && !Array.isArray(e);
 
-// LLM_PROVIDERS: JSON [{id,kind?,baseUrl,apiKeyEnv?,tokenParam?,maxConcurrency?}]. Unset -> single 'default' provider (LLM_BASE_URL).
+// LLM_PROVIDERS: JSON [{id,kind?,baseUrl,apiKeyEnv?,tokenParam?,maxConcurrency?}]. Unset -> single 'default' provider (LLM_BASE_URL; neither -> []).
 // The API never reads keys; errors name the field, never a value.
 export function parseProviders(raw: string | undefined, env: NodeJS.ProcessEnv = process.env): ProviderEntry[] {
-  if (!raw?.trim()) return [{ id: 'default', kind: 'openai', baseUrl: env.LLM_BASE_URL ?? '', tokenParam: 'max_tokens' }];
+  if (!raw?.trim()) {
+    // Neither set (the API may not have them): [] = nothing to seed, providers are created in Admin -> Providers.
+    if (!env.LLM_BASE_URL) return [];
+    return [{ id: 'default', kind: 'openai', baseUrl: env.LLM_BASE_URL, tokenParam: 'max_tokens' }];
+  }
   let list: unknown;
   try {
     list = JSON.parse(raw);
@@ -168,7 +172,7 @@ export function parseStripe(env: NodeJS.ProcessEnv) {
 }
 
 const providers = parseProviders(process.env.LLM_PROVIDERS, process.env);
-const models = parseModels(process.env.LLM_MODELS, process.env.LLM_MODEL, providers);
+const models = parseModels(process.env.LLM_MODELS, process.env.LLM_MODEL, providers.length ? providers : [{ id: 'default' }]);
 
 export const config = {
   stripe: parseStripe(process.env),

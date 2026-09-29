@@ -5,7 +5,9 @@ export type Preferences = { language?: string; lengthPercent?: number; method?: 
 export type Model = { id: string; label: string; multiplier: number };
 export type Extra = 'glossary' | 'questions' | 'takeaways';
 export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences; role: 'user' | 'admin' };
-export type AdminProvider = { id: string; kind: string; baseUrl: string };
+export type TokenParam = 'max_tokens' | 'max_completion_tokens';
+export type AdminProvider = { id: string; baseUrl: string; tokenParam: TokenParam; maxConcurrency: number | null; keyEnv: string };
+export type AdminProviderInput = { baseUrl: string; tokenParam: TokenParam; maxConcurrency: number | null };
 export type AdminModel = {
   id: string; label: string; provider: string; model: string; multiplier: number; temperature: number | null;
   priceIn: number | null; priceOut: number | null; adminOnly: boolean; enabled: boolean; position: number;
@@ -230,6 +232,34 @@ export function useReorderAdminModels() {
   return useMutation({
     mutationFn: (ids: string[]) => api('/admin/models/order', { method: 'POST', body: JSON.stringify({ ids }) }),
     onSuccess: () => invalidateModels(qc),
+  });
+}
+
+export const useAdminProviders = () =>
+  useQuery({ queryKey: ['admin', 'providers'], queryFn: () => api<AdminProvider[]>('/admin/providers') });
+
+// Models embed the providers, so both admin queries are refreshed.
+const invalidateProviders = (qc: ReturnType<typeof useQueryClient>) => {
+  qc.invalidateQueries({ queryKey: ['admin', 'providers'] });
+  qc.invalidateQueries({ queryKey: ['admin', 'models'] });
+};
+
+export function useSaveAdminProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, create, ...body }: AdminProviderInput & { id: string; create?: boolean }) =>
+      create
+        ? api<AdminProvider>('/admin/providers', { method: 'POST', body: JSON.stringify({ id, ...body }) })
+        : api<AdminProvider>(`/admin/providers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => invalidateProviders(qc),
+  });
+}
+
+export function useDeleteAdminProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/admin/providers/${id}`, { method: 'DELETE' }),
+    onSuccess: () => invalidateProviders(qc),
   });
 }
 

@@ -1,9 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, User } from '@summarize/db';
 import { CatalogService } from '../catalog/catalog.service';
-import { config } from '../config';
 import { PrismaService } from '../prisma.service';
 import { CreateModelDto, UpdateModelDto } from './admin.dto';
+import { providerView } from './providers.service';
 
 const CATALOG_LOCK = 726001;
 
@@ -12,8 +12,8 @@ const view = ({ id, label, provider, model, multiplier, temperature, priceIn, pr
   priceIn?: number | null; priceOut?: number | null; adminOnly: boolean; enabled: boolean; position: number;
 }) => ({ id, label, provider, model, multiplier, temperature, priceIn: priceIn ?? null, priceOut: priceOut ?? null, adminOnly, enabled, position });
 
-const checkProvider = (id: string) => {
-  if (!config.providers.some((p) => p.id === id)) throw new BadRequestException('Unknown provider');
+const checkProvider = async (tx: Prisma.TransactionClient, id: string) => {
+  if (!(await tx.llmProvider.findUnique({ where: { id } }))) throw new BadRequestException('Unknown provider');
 };
 
 @Injectable()
@@ -22,17 +22,16 @@ export class ModelsAdminService {
 
   constructor(private prisma: PrismaService, private catalog: CatalogService) {}
 
-  // Never includes apiKeyEnv or any key.
+  // Never includes any key.
   async list() {
-    return {
-      providers: config.providers.map(({ id, kind, baseUrl }) => ({ id, kind, baseUrl })),
-      models: (await this.catalog.all()).map(view),
-    };
+    const models = (await this.catalog.all()).map(view); // seeds providers too
+    const providers = await this.prisma.llmProvider.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    return { providers: providers.map(providerView), models };
   }
 
   async create(admin: User, dto: CreateModelDto) {
-    checkProvider(dto.provider);
     const row = await this.write(async (tx) => {
+      await checkProvider(tx, dto.provider);
       if (await tx.modelPreset.findUnique({ where: { id: dto.id } })) throw new ConflictException('Model id already exists');
       const last = await tx.modelPreset.aggregate({ _max: { position: true } });
       return tx.modelPreset.create({
@@ -50,9 +49,10 @@ export class ModelsAdminService {
   }
 
   async update(admin: User, id: string, dto: UpdateModelDto) {
-    if (dto.provider !== undefined) checkProvider(dto.provider);
     const row = await this.write(async (tx) => {
-      if (!(await tx.modelPreset.findUnique({ where: { id } }))) throw new NotFoundException('Model not found');
+      const cur = await tx.modelPreset.findUnique({ where: { id } });
+      if (!cur) throw new NotFoundException('Model not found');
+      if (dto.provider !== undefined && dto.provider !== cur.provider) await checkProvider(tx, dto.provider);
       return tx.modelPreset.update({ where: { id }, data: { ...dto } });
     });
     this.logger.log(`Model updated: admin ${admin.id}, ${id}, fields ${Object.keys(dto).join(',') || '-'}`);

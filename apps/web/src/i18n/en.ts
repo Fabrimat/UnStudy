@@ -190,7 +190,7 @@ export default {
       cost: 'Cost', name: 'Name', role: 'Role', provider: 'Provider', search: 'Search', lab: 'Lab', labTag: ' (lab)', remove: 'remove',
       open: 'open', deletedTag: ' (deleted)', phase: 'Phase',
     },
-    nav: { overview: 'Overview', users: 'Users', documents: 'Documents', jobs: 'Jobs', models: 'Models', lab: 'Lab' },
+    nav: { overview: 'Overview', users: 'Users', documents: 'Documents', jobs: 'Jobs', models: 'Models', providers: 'Providers', lab: 'Lab' },
     overview: {
       period: 'Period', days: '{n} days', users: 'Users', activeUsers: 'Active (30 days)', jobsQueuedRunning: 'Jobs queued / running',
       jobsDone: 'Jobs completed', jobsFailed: 'Jobs failed', creditsPurchased: 'Credits purchased', creditsGranted: 'Credits granted',
@@ -223,6 +223,13 @@ export default {
       priceOut: 'Price out /1M', adminOnly: 'Admin only', enabled: 'Enabled', up: 'Up', down: 'Down',
       intro: "The model catalogue. The order sets the default model (the first one that is enabled and not admin-only). Models can't be deleted: disable them instead. A disabled model still resolves for jobs already queued. The multiplier only applies to new jobs.",
       add: 'Add model', idHint: 'ID (a-z, 0-9, hyphen; max 32)',
+    },
+    providers: {
+      intro: 'The LLM endpoints that models point to. API keys never live here: each provider reads its key from the environment.',
+      baseUrl: 'Base URL', tokenParam: 'Token param', maxConcurrency: 'Max concurrency', keyEnv: 'Key env var',
+      keyHint: "Set this variable on the worker service, or keep the key in LLM_PROVIDERS' apiKeyEnv for seeded providers.",
+      unlimited: 'unlimited', add: 'Add provider', idHint: 'ID (a-z, 0-9, hyphen; max 32)', baseUrlHint: 'http(s)://… or "fake"',
+      confirmDelete: 'Delete provider {id}?',
     },
   },
   benchmark: {

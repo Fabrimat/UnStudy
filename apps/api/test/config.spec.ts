@@ -7,7 +7,9 @@ const model = { id: 'fast', label: 'Fast', model: 'p/fast', multiplier: 1 };
 describe('parseProviders', () => {
   it('defaults to a single provider from LLM_BASE_URL', () => {
     expect(parseProviders(undefined, { LLM_BASE_URL: 'https://b/v1' })).toEqual([{ id: 'default', kind: 'openai', baseUrl: 'https://b/v1', tokenParam: 'max_tokens' }]);
-    expect(parseProviders('  ', {})[0].id).toBe('default');
+    expect(parseProviders('  ', { LLM_BASE_URL: 'fake' })[0].id).toBe('default');
+    expect(parseProviders(undefined, {})).toEqual([]);
+    expect(parseProviders('  ', {})).toEqual([]);
   });
   it('parses a full catalogue and applies defaults', () => {
     const list = parseProviders(

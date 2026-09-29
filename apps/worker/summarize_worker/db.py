@@ -1,10 +1,11 @@
 """Job queue on the Prisma-owned schema. Identifiers are quoted: Prisma keeps PascalCase/camelCase names."""
 import logging
+import os
 
 import psycopg.errors
 from psycopg.types.json import Jsonb
 
-from .config import ModelEntry
+from .config import ModelEntry, Provider
 
 MAX_ATTEMPTS = 2
 SUMMARY_ERROR = "Summary generation failed. Your credits have been refunded."
@@ -12,6 +13,8 @@ ANALYZE_ERROR = "Could not read this PDF."
 
 log = logging.getLogger(__name__)
 _warned_missing_table = False
+_warned_missing_providers = False
+_warned_keyless: set[str] = set()
 
 
 def claim(conn, kind: str, user_only: bool = False) -> dict | None:
@@ -148,7 +151,7 @@ def models_from_rows(rows, provider_ids, fallback: tuple[ModelEntry, ...]) -> tu
                  for r in rows if r["provider"] in provider_ids)
 
 
-def load_models(conn, settings) -> tuple[ModelEntry, ...]:
+def load_models(conn, settings, provider_ids=None) -> tuple[ModelEntry, ...]:
     """Catalog for the next job: one SELECT, env fallback when the table is empty or not migrated yet."""
     global _warned_missing_table
     try:
@@ -160,4 +163,35 @@ def load_models(conn, settings) -> tuple[ModelEntry, ...]:
             _warned_missing_table = True
             log.warning('table "ModelPreset" is missing (API migration not applied yet), using LLM_MODELS')
         return settings.models
-    return models_from_rows(rows, {p.id for p in settings.providers}, settings.models)
+    return models_from_rows(rows, provider_ids if provider_ids is not None else {p.id for p in settings.providers},
+                            settings.models)
+
+
+def providers_from_rows(rows, fallback: tuple[Provider, ...], env) -> tuple[Provider, ...]:
+    """LlmProvider rows override the env providers by id; env-only ids stay (no rows: just env). Key = env LLM_KEY_<ID>, else the env-configured key of the
+    same id, else "" (the DB never names an env var). Warns once per id on a keyless non-fake endpoint, never logs a key."""
+    env_keys = {p.id: p.api_key for p in fallback}
+    out = []
+    for r in rows:
+        key = env.get("LLM_KEY_" + r["id"].upper().replace("-", "_")) or env_keys.get(r["id"], "")
+        if not key and r["baseUrl"] != "fake" and r["id"] not in _warned_keyless:
+            _warned_keyless.add(r["id"])
+            log.warning(f"provider {r['id']} has no API key (set LLM_KEY_{r['id'].upper().replace('-', '_')}), calling it keyless")
+        out.append(Provider(r["id"], "openai", r["baseUrl"], key, r["tokenParam"], r["maxConcurrency"]))
+    db_ids = {p.id for p in out}
+    return tuple(out) + tuple(p for p in fallback if p.id not in db_ids)
+
+
+def load_providers(conn, settings, env=None) -> tuple[Provider, ...]:
+    """Providers for the next job: one SELECT, DB rows override env providers by id; env alone when the table is empty or not migrated yet."""
+    global _warned_missing_providers
+    try:
+        rows = conn.execute('SELECT id, "baseUrl", "tokenParam", "maxConcurrency" FROM "LlmProvider" '
+                            'ORDER BY "createdAt", id').fetchall()
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        if not _warned_missing_providers:
+            _warned_missing_providers = True
+            log.warning('table "LlmProvider" is missing (API migration not applied yet), using LLM_PROVIDERS')
+        return settings.providers
+    return providers_from_rows(rows, settings.providers, os.environ if env is None else env)

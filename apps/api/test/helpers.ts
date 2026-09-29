@@ -18,7 +18,7 @@ export async function createApp(customize: (b: TestingModuleBuilder) => TestingM
 
 export async function resetDb(prisma: PrismaService) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE "CreditLedger", "StripeEvent", "ModelPreset", "Job", "Benchmark", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
+    'TRUNCATE "CreditLedger", "StripeEvent", "ModelPreset", "LlmProvider", "Job", "Benchmark", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
   );
   invalidateCatalog(); // the 5 s catalog cache must not outlive the truncated table
 }

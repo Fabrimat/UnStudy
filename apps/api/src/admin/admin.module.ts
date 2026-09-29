@@ -11,12 +11,13 @@ import { BenchmarksService } from './benchmarks.service';
 import { DocumentsAdminService } from './documents.admin.service';
 import { JobsAdminService } from './jobs.admin.service';
 import { ModelsAdminService } from './models.service';
+import { ProvidersAdminService } from './providers.service';
 import { StatsService } from './stats.service';
 import { UsersAdminService } from './users.service';
 
 @Module({
   imports: [AuthModule, CreditsModule, JobsModule, StorageModule],
   controllers: [AdminController, AdminUsersController, AdminDataController],
-  providers: [AdminGuard, BenchmarksService, ModelsAdminService, UsersAdminService, DocumentsAdminService, JobsAdminService, StatsService],
+  providers: [AdminGuard, BenchmarksService, ModelsAdminService, ProvidersAdminService, UsersAdminService, DocumentsAdminService, JobsAdminService, StatsService],
 })
 export class AdminModule {}

@@ -54,7 +54,7 @@ describe('admin lab', () => {
   it('lists providers and models without keys', async () => {
     const a = await admin();
     const res = await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
-    expect(res.body.providers).toEqual([{ id: 'fake', kind: 'openai', baseUrl: 'fake' }]);
+    expect(res.body.providers).toEqual([{ id: 'fake', baseUrl: 'fake', tokenParam: 'max_tokens', maxConcurrency: null, keyEnv: 'LLM_KEY_FAKE' }]);
     expect(res.body.models).toHaveLength(3);
     expect(res.body.models[0]).toMatchObject({ id: 'lab', adminOnly: true, temperature: null, priceIn: null });
     expect(JSON.stringify(res.body)).not.toMatch(/ADMIN_SPEC_KEY|sk-should-never-leak/);
@@ -203,5 +203,82 @@ describe('admin lab', () => {
     expect(await prisma.benchmark.count()).toBe(0);
     expect(await prisma.job.count({ where: { benchmarkId: res.body.id } })).toBe(0);
     await del().expect(404);
+  });
+
+  describe('providers', () => {
+    const send = (method: 'post' | 'patch' | 'delete', cookie: string, url: string, body?: object) =>
+      http()[method](url).set('Origin', ORIGIN).set('Cookie', cookie).send(body);
+    const model = { id: 'extra', label: 'Extra', model: 'p/extra', multiplier: 1 };
+
+    it('returns 404 to non-admin callers on every route', async () => {
+      const { cookie } = await loginAs(app, 'u@x.com');
+      await http().get('/api/admin/providers').set('Cookie', cookie).expect(404);
+      await send('post', cookie, '/api/admin/providers', { id: 'p1', baseUrl: 'https://x/v1' }).expect(404);
+      await send('patch', cookie, '/api/admin/providers/fake', { baseUrl: 'https://x/v1' }).expect(404);
+      await send('delete', cookie, '/api/admin/providers/fake').expect(404);
+    });
+
+    it('seeds from env on first read, shows keyEnv and no keys', async () => {
+      const a = await admin();
+      const res = await http().get('/api/admin/providers').set('Cookie', a.cookie).expect(200);
+      expect(res.body).toEqual([{ id: 'fake', baseUrl: 'fake', tokenParam: 'max_tokens', maxConcurrency: null, keyEnv: 'LLM_KEY_FAKE' }]);
+      expect(JSON.stringify(res.body)).not.toMatch(/ADMIN_SPEC_KEY|sk-should-never-leak|apiKeyEnv/);
+    });
+
+    it('creates, rejects duplicates and invalid input', async () => {
+      const a = await admin();
+      const url = '/api/admin/providers';
+      const res = await send('post', a.cookie, url, { id: 'my-llm', baseUrl: ' https://api.x.com/v1 ', maxConcurrency: 4 }).expect(201);
+      expect(res.body).toEqual({ id: 'my-llm', baseUrl: 'https://api.x.com/v1', tokenParam: 'max_tokens', maxConcurrency: 4, keyEnv: 'LLM_KEY_MY_LLM' });
+      await send('post', a.cookie, url, { id: 'my-llm', baseUrl: 'fake' }).expect(409);
+      await send('post', a.cookie, url, { id: 'ok', baseUrl: 'fake', tokenParam: 'max_completion_tokens' }).expect(201);
+      const list = (await http().get(url).set('Cookie', a.cookie)).body.map((p: { id: string }) => p.id);
+      expect(list).toEqual(['fake', 'my-llm', 'ok']);
+      for (const bad of [{ id: 'Bad_Id', baseUrl: 'fake' }, { id: 'x', baseUrl: 'ftp://x' }, { id: 'x', baseUrl: 'http://u:p@x' }, { id: 'x', baseUrl: '' },
+        { id: 'x', baseUrl: 'nope' }, { id: 'x', baseUrl: 'fake', tokenParam: 'foo' }, { id: 'x', baseUrl: 'fake', maxConcurrency: 0 }, { id: 'x', baseUrl: 'fake', maxConcurrency: 65 }]) {
+        await send('post', a.cookie, url, bad).expect(400);
+      }
+    });
+
+    it('updates fields, null clears maxConcurrency, 404 when unknown', async () => {
+      const a = await admin();
+      const url = '/api/admin/providers/fake';
+      const res = await send('patch', a.cookie, url, { baseUrl: 'http://localhost:1234/v1', tokenParam: 'max_completion_tokens', maxConcurrency: 8 }).expect(200);
+      expect(res.body).toMatchObject({ id: 'fake', baseUrl: 'http://localhost:1234/v1', tokenParam: 'max_completion_tokens', maxConcurrency: 8 });
+      expect((await send('patch', a.cookie, url, { maxConcurrency: null }).expect(200)).body).toMatchObject({ baseUrl: 'http://localhost:1234/v1', maxConcurrency: null });
+      await send('patch', a.cookie, url, { baseUrl: 'ftp://x' }).expect(400);
+      await send('patch', a.cookie, url, { baseUrl: null }).expect(400);
+      await send('patch', a.cookie, '/api/admin/providers/nope', { baseUrl: 'fake' }).expect(404);
+    });
+
+    it('refuses to delete a provider used by a model, deletes an unused one', async () => {
+      const a = await admin();
+      await send('post', a.cookie, '/api/admin/providers', { id: 'spare', baseUrl: 'fake' }).expect(201);
+      const res = await send('delete', a.cookie, '/api/admin/providers/fake').expect(409);
+      expect(res.body.message).toBe('Provider is used by models');
+      await send('delete', a.cookie, '/api/admin/providers/spare').expect(204);
+      await send('delete', a.cookie, '/api/admin/providers/spare').expect(404);
+    });
+
+    it('does not check the provider when a model update leaves it unchanged', async () => {
+      const a = await admin();
+      await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200); // seed
+      await prisma.llmProvider.deleteMany(); // models reference 'fake', table now empty
+      await send('patch', a.cookie, '/api/admin/models/fast', { label: 'Renamed' }).expect(200);
+      await send('patch', a.cookie, '/api/admin/models/fast', { provider: 'fake' }).expect(200);
+      await send('patch', a.cookie, '/api/admin/models/fast', { provider: 'ghost' }).expect(400);
+    });
+
+    it('checks the provider of a model against the DB', async () => {
+      const a = await admin();
+      await send('post', a.cookie, '/api/admin/models', { ...model, provider: 'mine' }).expect(400);
+      await send('post', a.cookie, '/api/admin/providers', { id: 'mine', baseUrl: 'https://x/v1' }).expect(201);
+      await send('post', a.cookie, '/api/admin/models', { ...model, provider: 'mine' }).expect(201);
+      await send('patch', a.cookie, '/api/admin/models/extra', { provider: 'ghost' }).expect(400);
+      await send('delete', a.cookie, '/api/admin/providers/mine').expect(409);
+      const res = await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
+      expect(res.body.providers.map((p: { id: string }) => p.id)).toEqual(['fake', 'mine']);
+      expect(JSON.stringify(res.body)).not.toMatch(/apiKeyEnv|sk-should-never-leak/);
+    });
   });
 });

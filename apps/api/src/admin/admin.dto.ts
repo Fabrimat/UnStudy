@@ -1,7 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, NotEquals,
-  ValidateIf, ValidateNested,
+  ValidateBy, ValidateIf, ValidateNested,
 } from 'class-validator';
 import { JobSettingsDto } from '../jobs/jobs.dto';
 import { PageQueryDto } from '../pagination';
@@ -156,6 +156,58 @@ export class UpdateModelDto {
   @IsInt()
   @Min(0)
   position?: number;
+}
+
+// --- providers ---
+// "fake" or an http(s) URL without credentials (no NODE_ENV gating).
+const validBaseUrl = (v: unknown) => {
+  if (v === 'fake') return true;
+  if (typeof v !== 'string') return false;
+  try {
+    const u = new URL(v);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+};
+const IsBaseUrl = () =>
+  ValidateBy({ name: 'isBaseUrl', validator: { validate: validBaseUrl, defaultMessage: () => 'baseUrl must be "fake" or an http(s) URL without credentials' } });
+
+export class CreateProviderDto {
+  @Matches(/^[a-z0-9-]{1,32}$/, { message: 'id must be a-z, 0-9, dash, max 32' })
+  id: string;
+
+  @Transform(trim)
+  @IsBaseUrl()
+  baseUrl: string;
+
+  @IsOptional()
+  @IsIn(['max_tokens', 'max_completion_tokens'])
+  tokenParam?: 'max_tokens' | 'max_completion_tokens';
+
+  // null = no cap
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(64)
+  maxConcurrency?: number | null;
+}
+
+export class UpdateProviderDto {
+  @ValidateIf((_, v) => set(v))
+  @Transform(trim)
+  @IsBaseUrl()
+  baseUrl?: string;
+
+  @ValidateIf((_, v) => set(v))
+  @IsIn(['max_tokens', 'max_completion_tokens'])
+  tokenParam?: 'max_tokens' | 'max_completion_tokens';
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(64)
+  maxConcurrency?: number | null;
 }
 
 export class ModelOrderDto {

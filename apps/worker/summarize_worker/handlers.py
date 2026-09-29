@@ -100,7 +100,7 @@ def handle_analyze(conn, storage, settings, job: dict) -> None:
     log.info(f"analyze job {job['id']} succeeded in {time.monotonic() - start:.1f}s")
 
 
-def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_entry, verify_entry) -> None:
+def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_entry, verify_entry, providers=None) -> None:
     start = time.monotonic()
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
@@ -128,7 +128,7 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
     def phase(entry) -> Phase | None:
         if entry is None:
             return None
-        provider = settings.provider(entry.provider)
+        provider = next(p for p in (settings.providers if providers is None else providers) if p.id == entry.provider)
         return Phase(clients[provider.id], entry, provider)
 
     model = draft_entry.model
@@ -151,8 +151,8 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
             f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
 
-def process(conn, storage, settings, clients: dict, job: dict, models=None) -> None:
-    """clients: provider id -> client, built once per worker thread. models: catalog loaded before the claim."""
+def process(conn, storage, settings, clients: dict, job: dict, models=None, providers=None) -> None:
+    """clients: provider id -> client. models, providers: loaded before the claim (None: env settings)."""
     model = None
     try:
         if job["kind"] == "summarize":
@@ -161,7 +161,7 @@ def process(conn, storage, settings, clients: dict, job: dict, models=None) -> N
         if job["kind"] == "analyze":
             handle_analyze(conn, storage, settings, job)
         else:
-            handle_summarize(conn, storage, settings, clients, job, draft, verify)
+            handle_summarize(conn, storage, settings, clients, job, draft, verify, providers)
     except UnknownModel:
         log.error(f"job {job['id']} failed (unknown model id, refunded, no retry)")
         db.fail(conn, job, None)

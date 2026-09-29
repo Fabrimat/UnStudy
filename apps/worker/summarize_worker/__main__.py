@@ -30,8 +30,8 @@ def configure_logging(level: int) -> None:
 
 
 def run(kind: str, settings: Settings, stop: threading.Event, user_only: bool = False) -> None:
-    # one client per provider per thread; provider concurrency limits are shared process-wide (llm.limiter_for)
-    storage, clients = Storage(settings), {p.id: make_client(p) for p in settings.providers}
+    # one client per provider per thread, rebuilt when its row changes; concurrency limits are shared process-wide (llm.limiter_for)
+    storage, clients = Storage(settings), {}
     conn, last_recovery = None, 0.0
     while not stop.is_set():
         try:
@@ -41,13 +41,16 @@ def run(kind: str, settings: Settings, stop: threading.Event, user_only: bool = 
                 if n := db.recover_stale(conn):
                     log.info(f"recovered {n} stale job(s)")
                 last_recovery = time.time()
-            models = db.load_models(conn, settings)  # before the claim: an error here never strands a running job
+            # before the claim: an error here never strands a running job
+            providers = db.load_providers(conn, settings)
+            models = db.load_models(conn, settings, {p.id for p in providers})
+            clients = {p: clients.get(p) or make_client(p) for p in providers}  # evicts stale clients
             job = db.claim(conn, kind, user_only=user_only)
             if job is None:
                 stop.wait(POLL_SECONDS)
                 continue
             log.info(f"{kind}: job {job['id']} claimed (doc {job['documentId']}, attempt {job['attempts']})")
-            process(conn, storage, settings, clients, job, models)
+            process(conn, storage, settings, {p.id: c for p, c in clients.items()}, job, models, providers)
         except psycopg.OperationalError:
             log.error("database connection lost, will reconnect", exc_info=True)  # database restarted
             conn = None

@@ -3,7 +3,7 @@ import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'rea
 import { api, Me, useMe } from './api';
 import { t } from './i18n';
 import AdminLab from './pages/AdminLab';
-import { AdminDocumentPage, AdminDocuments, AdminJobPage, AdminJobs, AdminLayout, AdminModels, AdminOverview, AdminUserPage, AdminUsers } from './pages/admin';
+import { AdminDocumentPage, AdminDocuments, AdminJobPage, AdminJobs, AdminLayout, AdminModels, AdminOverview, AdminProviders, AdminUserPage, AdminUsers } from './pages/admin';
 import BenchmarkPage from './pages/BenchmarkPage';
 import Credits from './pages/Credits';
 import Dashboard from './pages/Dashboard';
@@ -40,6 +40,7 @@ export default function App() {
             <Route path="jobs" element={<AdminJobs />} />
             <Route path="jobs/:id" element={<AdminJobPage />} />
             <Route path="models" element={<AdminModels />} />
+            <Route path="providers" element={<AdminProviders />} />
             <Route path="lab" element={<AdminLab />} />
             <Route path="benchmarks/:id" element={<BenchmarkPage />} />
           </Route>

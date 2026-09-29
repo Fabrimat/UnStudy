@@ -264,3 +264,17 @@ model ModelPreset {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+/// LLM endpoints (keys stay in env). Key = env LLM_KEY_<ID> (upper, '-'->'_'), else the apiKeyEnv of the same id in env LLM_PROVIDERS.
+/// No FK from ModelPreset.provider: the lazy seed runs after migration; the app checks under CATALOG_LOCK.
+model LlmProvider {
+  id             String   @id
+  /// http(s)://... or "fake"
+  baseUrl        String
+  /// max_tokens | max_completion_tokens
+  tokenParam     String   @default("max_tokens")
+  /// 1..64
+  maxConcurrency Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
