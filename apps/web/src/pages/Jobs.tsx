@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import Pager from '../Pager';
 import Select from '../Select';
-import { api, JobWithDoc, methodLabel, Page, qs, styleOptions, useMethods } from '../api';
+import { api, JobWithDoc, lengthLabel, methodLabel, Page, qs, styleOptions, useMethods } from '../api';
 
 const STATUSES = [['', 'All statuses'], ['queued', 'Queued'], ['running', 'Running'], ['done', 'Done'], ['failed', 'Failed']] as const;
 
@@ -58,7 +58,7 @@ export default function Jobs() {
                 <td className="max-w-48 truncate p-2"><Link to={`/jobs/${j.id}`} className="underline">{j.document.filename}</Link></td>
                 <td className="p-2">{new Date(j.createdAt).toLocaleString()}</td>
                 <td className="p-2">{methodLabel(j.options, methods.data)}</td>
-                <td className="p-2">{j.options.fraction ? `1/${j.options.fraction}` : ''}</td>
+                <td className="p-2">{lengthLabel(j.options)}</td>
                 <td className="p-2">{String(j.options.language ?? '')}</td>
                 <td className="p-2">{j.status === 'running' ? `${j.progress}%` : j.status}</td>
                 <td className="p-2">{j.credits}</td>

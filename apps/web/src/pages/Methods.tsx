@@ -62,7 +62,7 @@ export default function Methods() {
             <textarea required rows={12} maxLength={MAX} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} className="mt-1 w-full rounded border bg-white p-2 font-mono text-sm" />
           </label>
           <p className="text-sm text-gray-600">
-            {draft.instructions.length}/{MAX} · Language, length and output format are always enforced by the platform; {'{language}'} and {'{fraction}'} are filled in for you.
+            {draft.instructions.length}/{MAX} · Language, length and output format are always enforced by the platform; {'{language}'} and {'{length}'} are filled in for you.
           </p>
           <div className="flex gap-3">
             <button disabled={save.isPending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">Save</button>

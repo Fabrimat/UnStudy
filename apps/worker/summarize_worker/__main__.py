@@ -67,7 +67,7 @@ def main() -> None:
     for t in threads:
         t.start()
     llm_host = urlsplit(settings.llm_base_url).hostname or settings.llm_base_url
-    log.info(f"worker started (model {settings.llm_model}, llm host {llm_host}, poll {POLL_SECONDS}s)")
+    log.info(f"worker started (model {settings.default_model}, llm host {llm_host}, poll {POLL_SECONDS}s)")
     try:
         while all(t.is_alive() for t in threads):
             stop.wait(1)

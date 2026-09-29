@@ -34,7 +34,7 @@ def test_all_caps_heading_becomes_title_case():
         "# The Consequences of Democratization\n\n## Introduction\n\ntext"
 
 
-def test_length_target_follows_fraction():
+def test_length_target_follows_length_percent():
     original = "word " * 1000
-    assert run_checks("x " * 200, original, fraction=5) == []
-    assert [p.split()[0] for p in run_checks("x " * 200, original, fraction=3)] == ["length"]
+    assert run_checks("x " * 200, original, length_percent=20) == []
+    assert [p.split()[0] for p in run_checks("x " * 200, original, length_percent=33)] == ["length"]

@@ -5,7 +5,7 @@ from . import db
 from .docx import to_docx
 from .llm import Usage
 from .pipeline import summarize_chapters
-from .prompts import render_custom, render_instructions
+from .prompts import length_percent, render_custom, render_instructions
 from .text import Chapter, clean_pages, extract_pages, inspect_pdf, split_chapters
 
 MAX_BYTES = 50 * 1024 * 1024
@@ -21,6 +21,21 @@ class Rejected(Exception):
 
 class FileChanged(Exception):
     """The stored PDF no longer matches what priced the job (F1 credit bypass): fail now, no retry."""
+
+
+class UnknownModel(Exception):
+    """The job asks for a model id this worker's catalog does not have: fail now, no retry."""
+
+
+def resolve_model(settings, opts: dict) -> str:
+    # The provider model always comes from the worker's own catalog, never from options.model.
+    model_id = opts.get("modelId")
+    if model_id is None:
+        return settings.default_model
+    try:
+        return dict(settings.models)[model_id]
+    except KeyError:
+        raise UnknownModel(f"unknown model id {model_id!r}") from None
 
 
 def load_pdf(storage, doc: dict) -> bytes:
@@ -73,7 +88,7 @@ def handle_analyze(conn, storage, settings, job: dict) -> None:
     log.info(f"analyze job {job['id']} succeeded in {time.monotonic() - start:.1f}s")
 
 
-def handle_summarize(conn, storage, settings, client, job: dict) -> None:
+def handle_summarize(conn, storage, settings, client, job: dict, model: str) -> None:
     start = time.monotonic()
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
@@ -83,20 +98,27 @@ def handle_summarize(conn, storage, settings, client, job: dict) -> None:
         # call the LLM on it, and never retry (a retry would just re-read the same swapped file).
         raise FileChanged("The file changed after it was priced")
     opts = job["options"]
+    if (picked := opts.get("chapters")) is not None:
+        if len(chapters) != len(doc["chapters"] or []):
+            raise FileChanged("The chapter split changed after it was priced")
+        if not picked or not all(isinstance(i, int) and 0 <= i < len(chapters) for i in picked):
+            raise FileChanged("Chapter selection does not match the document")  # the API validates this; never retry
+        chapters = [chapters[i] for i in picked]
+    percent, extras = length_percent(opts), opts.get("extras") or ()
     usage = Usage()
     custom = opts.get("customInstructions")
     if isinstance(custom, str) and custom.strip():
-        instructions = render_custom(custom, opts["language"], opts["fraction"])
+        instructions = render_custom(custom, opts["language"], percent, extras)
         log.debug(f"summarize job {job['id']} custom instructions ({len(custom)} chars)")
     else:  # a custom:<id> method without a snapshot lands here and fails as an unknown preset
-        instructions = render_instructions(opts.get("preset") or opts.get("method"), opts["language"], opts["fraction"])
+        instructions = render_instructions(opts.get("preset") or opts.get("method"), opts["language"], percent, extras)
 
     def on_call(rec: dict):
         db.record_call(conn, job, rec)  # a raising recorder is swallowed and logged by call_model
 
     markdown, warnings = summarize_chapters(
-        client, settings.llm_model, chapters, instructions,
-        fraction=opts["fraction"], bibliographic_line=opts.get("bibliographicLine"),
+        client, model, chapters, instructions,
+        length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
         on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage,
         on_call=on_call)
     db.progress(conn, job["id"], 99, "Saving", job["attempts"])
@@ -104,18 +126,23 @@ def handle_summarize(conn, storage, settings, client, job: dict) -> None:
     storage.put(f"{prefix}.md", markdown.encode("utf-8"), "text/markdown; charset=utf-8")
     storage.put(f"{prefix}.docx", to_docx(markdown), DOCX_MIME)
     db.finish_summary(conn, job, md_key=f"{prefix}.md", docx_key=f"{prefix}.docx", warnings=warnings,
-                      model=settings.llm_model, duration_ms=int((time.monotonic() - start) * 1000))
+                      model=model, duration_ms=int((time.monotonic() - start) * 1000))
     log.info(f"summarize job {job['id']} succeeded in {time.monotonic() - start:.1f}s "
             f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
 
 def process(conn, storage, settings, client, job: dict) -> None:
-    model = settings.llm_model if job["kind"] == "summarize" else None
+    model = None
     try:
+        if job["kind"] == "summarize":
+            model = resolve_model(settings, job["options"])
         if job["kind"] == "analyze":
             handle_analyze(conn, storage, settings, job)
         else:
-            handle_summarize(conn, storage, settings, client, job)
+            handle_summarize(conn, storage, settings, client, job, model)
+    except UnknownModel:
+        log.error(f"job {job['id']} failed (unknown model id, refunded, no retry)")
+        db.fail(conn, job, None)
     except FileChanged:
         log.error(f"job {job['id']} failed (file changed after pricing, refunded, no retry)", exc_info=True)
         db.fail(conn, job, model)

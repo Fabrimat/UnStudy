@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
-export type Preferences = { language?: string; fraction?: number; method?: string };
+export type Preferences = { language?: string; lengthPercent?: number; method?: string; model?: string; fraction?: number /* legacy */ };
+export type Model = { id: string; label: string; multiplier: number };
+export type Extra = 'glossary' | 'questions' | 'takeaways';
 export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences };
 export type Method = { id: string; name: string; instructions: string; createdAt: string; updatedAt: string };
 export type Chapter = { title: string; pageFrom: number | null; pageTo: number | null; words: number };
@@ -13,7 +15,7 @@ export type Job = {
 export type Doc = {
   id: string; filename: string; sizeBytes: number; status: 'uploaded' | 'analyzed' | 'rejected';
   rejectReason: string | null; pages: number | null; words: number | null; chapters: Chapter[] | null;
-  credits: number | null; createdAt: string; jobs: Job[]; analysisQueued: boolean;
+  credits: number | null; createdAt: string; jobs: Job[]; analysisQueued: boolean; fileDeleted: boolean;
 };
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
 export type JobWithDoc = Job & { document: { id: string; filename: string } };
@@ -29,7 +31,23 @@ export const qs = (params: Record<string, string | number | boolean | null | und
 };
 
 export const LANGUAGES = [['auto', 'Same as the document'], ['en', 'English'], ['it', 'Italian'], ['nl', 'Dutch'], ['fr', 'French'], ['de', 'German'], ['es', 'Spanish']] as const;
-export const FRACTIONS = [[3, '1/3 of the original'], [5, '1/5 of the original'], [10, '1/10 of the original']] as const;
+export const QUICK_LENGTHS = [[33, '1/3'], [20, '1/5'], [10, '1/10']] as const;
+export const EXTRAS = [['glossary', 'Glossary'], ['questions', 'Review questions'], ['takeaways', 'Key takeaways']] as const;
+
+const WORDS_PER_CREDIT = 1000;
+// Same integer arithmetic as the API, to avoid ceil(11.000000000000002).
+export const creditsForJob = (words: number, multiplier = 1) =>
+  Math.max(1, Math.ceil((Math.max(1, Math.ceil(words / WORDS_PER_CREDIT)) * Math.round(multiplier * 100)) / 100));
+
+// Length of a job: "N%", or "1/N" for old jobs that only have options.fraction.
+export const lengthLabel = (o: Record<string, unknown>) =>
+  o.lengthPercent ? `${o.lengthPercent}%` : o.fraction ? `1/${o.fraction}` : '';
+
+// Saved length preference: lengthPercent, else legacy fraction, else 33.
+export const lengthOf = (p?: Preferences) => p?.lengthPercent ?? (p?.fraction ? Math.round(100 / p.fraction) : 33);
+
+export const modelOptions = (models: Model[] = []) =>
+  models.map((m) => [m.id, m.multiplier !== 1 ? `${m.label} (×${m.multiplier})` : m.label] as const);
 export const PRESETS = [['studio', 'Study summary (continuous prose)'], ['schematico', 'Structured notes (bullet points)'], ['abstract', 'Short abstract']] as const;
 
 // Style select options: optional leading entries, the 3 presets, then the user's custom methods.
@@ -91,6 +109,8 @@ export async function api<T = void>(path: string, init: RequestInit = {}): Promi
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') });
 
 export const useMethods = () => useQuery({ queryKey: ['methods'], queryFn: () => api<Method[]>('/methods') });
+
+export const useModels = () => useQuery({ queryKey: ['models'], queryFn: () => api<Model[]>('/models') });
 
 export async function uploadFile(file: File) {
   const { document, uploadUrl } = await api<{ document: Doc; uploadUrl: string }>('/documents', {

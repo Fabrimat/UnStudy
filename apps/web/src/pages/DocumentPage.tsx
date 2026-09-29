@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import LengthPicker from '../LengthPicker';
 import Select from '../Select';
-import { api, ApiError, Doc, FRACTIONS, Job, LANGUAGES, styleOptions, uploadFailed, useMe, useMethods } from '../api';
+import {
+  api, ApiError, creditsForJob, Doc, EXTRAS, Extra, Job, LANGUAGES, lengthOf, modelOptions, styleOptions, uploadFailed, useMe, useMethods, useModels,
+} from '../api';
 
 function errorText(e: Error) {
   if (e instanceof ApiError && e.status === 402) {
@@ -11,33 +14,55 @@ function errorText(e: Error) {
   return e.message;
 }
 
+type Picked = { language?: string; lengthPercent?: number; method?: string; model?: string; chapters?: number[]; extras?: Extra[]; bibliographicLine?: string };
+
 export default function DocumentPage() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
+  const from = searchParams.get('from');
   const navigate = useNavigate();
   const qc = useQueryClient();
   const me = useMe();
   const methods = useMethods();
+  const models = useModels().data;
   const prefs = me.data?.preferences;
-  // Picked values win; otherwise fall back to the saved preferences, then defaults.
-  const [picked, setPicked] = useState<{ language?: string; fraction?: number; method?: string }>({});
-  const language = picked.language ?? prefs?.language ?? 'auto';
-  const fraction = picked.fraction ?? prefs?.fraction ?? 3;
-  const wanted = picked.method ?? prefs?.method ?? 'studio';
+  // Job being regenerated: its options prefill the form, ahead of the saved preferences.
+  const fromJob = useQuery({ queryKey: ['jobs', from], queryFn: () => api<Job>(`/jobs/${from}`), enabled: !!from });
+  const fo: Record<string, unknown> = fromJob.data && fromJob.data.documentId === id ? fromJob.data.options : {};
+  // Picked values win; otherwise the job being regenerated, the saved preferences, then defaults.
+  const [picked, setPicked] = useState<Picked>({});
+  const language = picked.language ?? (fo.language as string | undefined) ?? prefs?.language ?? 'auto';
+  const lengthPercent = picked.lengthPercent ?? (fo.lengthPercent ? Number(fo.lengthPercent) : fo.fraction ? Math.round(100 / Number(fo.fraction)) : lengthOf(prefs));
+  const wanted = picked.method ?? (fo.method as string | undefined) ?? prefs?.method ?? 'studio';
   const options = styleOptions(methods.data);
   // A deleted custom method (or one not loaded yet) falls back to studio.
   const method = options.some(([v]) => v === wanted) ? wanted : 'studio';
-  const [bibliographicLine, setBibliographicLine] = useState('');
+  const wantedModel = picked.model ?? (fo.modelId as string | undefined) ?? prefs?.model;
+  // A model gone from the catalog falls back to the first one.
+  const modelId = models?.find((m) => m.id === wantedModel) ?? models?.[0];
+  const extras = picked.extras ?? (Array.isArray(fo.extras) ? (fo.extras as Extra[]) : []);
+  const bibliographicLine = picked.bibliographicLine ?? (fo.bibliographicLine as string | undefined) ?? '';
   const doc = useQuery({
     queryKey: ['documents', id],
     queryFn: () => api<Doc>(`/documents/${id}`),
     refetchInterval: (q) => (q.state.data?.status === 'uploaded' && !uploadFailed(q.state.data) ? 2000 : false),
   });
+  const chapterList = doc.data?.chapters ?? [];
+  // Old jobs may point at chapters that no longer exist; those are dropped.
+  const foChapters = Array.isArray(fo.chapters) ? (fo.chapters as number[]).filter((i) => i < chapterList.length) : null;
+  const selected = picked.chapters ?? (foChapters?.length ? foChapters : chapterList.map((_, i) => i));
+  const allSelected = selected.length === chapterList.length;
+  const words = allSelected ? doc.data?.words ?? 0 : selected.reduce((n, i) => n + (chapterList[i]?.words ?? 0), 0);
+  const cost = creditsForJob(words, modelId?.multiplier);
   const start = useMutation({
     mutationFn: () =>
       api<Job>('/jobs', {
         method: 'POST',
         body: JSON.stringify({
-          documentId: id, language, fraction, method,
+          documentId: id, language, lengthPercent, method,
+          ...(allSelected ? {} : { chapters: [...selected].sort((a, b) => a - b) }),
+          ...(extras.length ? { extras } : {}),
+          ...(modelId ? { model: modelId.id } : {}),
           ...(bibliographicLine.trim() ? { bibliographicLine: bibliographicLine.trim() } : {}),
         }),
       }),
@@ -46,6 +71,7 @@ export default function DocumentPage() {
       navigate(`/jobs/${job.id}`);
     },
   });
+  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 
   if (doc.error) return <p className="text-red-600">{doc.error.message}</p>;
   if (!doc.data) return <p>Loading…</p>;
@@ -59,28 +85,45 @@ export default function DocumentPage() {
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">{d.filename}</h1>
       <p className="text-sm text-gray-600">{d.pages} pages · {d.words} words · {d.chapters?.length} part(s)</p>
-      <ol className="list-decimal space-y-1 pl-6 text-sm">
-        {d.chapters?.map((c, i) => (
-          <li key={i}>{c.title}{c.pageFrom ? ` (pp. ${c.pageFrom}–${c.pageTo})` : ''} · {c.words} words</li>
+      <div className="space-y-1 text-sm">
+        <p>
+          Parts to summarize:{' '}
+          <button type="button" className="underline" onClick={() => setPicked({ ...picked, chapters: chapterList.map((_, i) => i) })}>All</button>{' · '}
+          <button type="button" className="underline" onClick={() => setPicked({ ...picked, chapters: [] })}>None</button>
+        </p>
+        {chapterList.map((c, i) => (
+          <label key={i} className="block">
+            <input type="checkbox" checked={selected.includes(i)} onChange={() => setPicked({ ...picked, chapters: toggle(selected, i) })} />{' '}
+            {c.title}{c.pageFrom ? ` (pp. ${c.pageFrom}–${c.pageTo})` : ''} · {c.words} words
+          </label>
         ))}
-      </ol>
+      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <Select label="Language" value={language} onChange={(v) => setPicked({ ...picked, language: v })} options={LANGUAGES} />
-        <Select label="Length" value={fraction} onChange={(v) => setPicked({ ...picked, fraction: v })} options={FRACTIONS} />
         <Select label="Style" value={method} onChange={(v) => setPicked({ ...picked, method: v })} options={options} />
+        {models && models.length > 1 && modelId && <Select label="Model" value={modelId.id} onChange={(v) => setPicked({ ...picked, model: v })} options={modelOptions(models)} />}
+      </div>
+      <LengthPicker value={lengthPercent} onChange={(v) => setPicked({ ...picked, lengthPercent: v })} words={words} />
+      <div className="text-sm">
+        Extra sections:{' '}
+        {EXTRAS.map(([v, label]) => (
+          <label key={v} className="mr-3">
+            <input type="checkbox" checked={extras.includes(v)} onChange={() => setPicked({ ...picked, extras: toggle(extras, v) })} /> {label}
+          </label>
+        ))}
       </div>
       <label className="block">
         Bibliographic line (optional)
         <input
           maxLength={300}
           value={bibliographicLine}
-          onChange={(e) => setBibliographicLine(e.target.value)}
+          onChange={(e) => setPicked({ ...picked, bibliographicLine: e.target.value })}
           placeholder="**Arend Lijphart** – *Patterns of Democracy*, Yale University Press, 2012"
           className="mt-1 w-full rounded border bg-white p-2"
         />
       </label>
-      <p>Cost: <strong>{d.credits} credits</strong> · Your balance: {me.data?.balance} credits</p>
-      <button disabled={start.isPending} onClick={() => start.mutate()} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
+      <p>Cost: <strong>{cost} credits</strong> · Your balance: {me.data?.balance} credits</p>
+      <button disabled={start.isPending || selected.length === 0} onClick={() => start.mutate()} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
         Start summary
       </button>
       {start.error && <p className="text-red-600">{errorText(start.error)}</p>}

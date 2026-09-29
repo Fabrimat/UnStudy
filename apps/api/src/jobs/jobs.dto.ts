@@ -1,6 +1,6 @@
-import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { ArrayMinSize, ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { PageQueryDto } from '../pagination';
-import { FRACTIONS, LANGUAGES, METHOD_MESSAGE, METHOD_RE } from './options';
+import { EXTRAS, LANGUAGES, LENGTH_MAX, LENGTH_MIN, METHOD_MESSAGE, METHOD_RE } from './options';
 
 export class CreateJobDto {
   @IsUUID()
@@ -9,8 +9,29 @@ export class CreateJobDto {
   @IsIn(LANGUAGES)
   language: (typeof LANGUAGES)[number];
 
-  @IsIn(FRACTIONS)
-  fraction: (typeof FRACTIONS)[number];
+  @IsInt()
+  @Min(LENGTH_MIN)
+  @Max(LENGTH_MAX)
+  lengthPercent: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  chapters?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsIn(EXTRAS, { each: true })
+  extras?: (typeof EXTRAS)[number][];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  model?: string;
 
   @Matches(METHOD_RE, { message: METHOD_MESSAGE })
   method: string;

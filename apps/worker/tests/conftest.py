@@ -23,7 +23,8 @@ def migrated():
 def settings():
     return Settings(database_url=TEST_DB, s3_endpoint="http://localhost:9000", s3_region="us-east-1",
                     s3_bucket="summarize-test", s3_key="summarize", s3_secret="summarize-secret",
-                    llm_base_url="fake", llm_api_key="", llm_model="fake", ocr_langs=None)
+                    llm_base_url="fake", llm_api_key="", llm_model="fake", ocr_langs=None,
+                    models=(("default", "fake"), ("alt", "alt-model")))
 
 
 @pytest.fixture

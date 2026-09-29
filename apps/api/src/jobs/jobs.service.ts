@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, User } from '@summarize/db';
-import { creditsFor } from '../credits/credits';
+import { config } from '../config';
+import { creditsForJob } from '../credits/credits';
 import { LedgerService } from '../credits/ledger.service';
 import { page } from '../pagination';
 import { PrismaService } from '../prisma.service';
@@ -16,7 +17,9 @@ export class JobsService {
   constructor(private prisma: PrismaService, private ledger: LedgerService, private storage: StorageService) {}
 
   async create(user: User, dto: CreateJobDto) {
-    const { documentId, method, ...rest } = dto;
+    const { documentId, method, chapters, extras, model: modelId, ...rest } = dto;
+    const entry = modelId === undefined ? config.models[0] : config.models.find((m) => m.id === modelId);
+    if (!entry) throw new BadRequestException('Unknown model');
     let customChars = 0;
     const job = await this.prisma.$transaction(async (tx) => {
       // Row lock on the user serialises concurrent starts, so the balance check below cannot race.
@@ -29,14 +32,28 @@ export class JobsService {
       });
       if (active >= MAX_ACTIVE_SUMMARIES) throw new HttpException(`You already have ${MAX_ACTIVE_SUMMARIES} summaries in progress`, 429);
       // System preset keeps `preset` for the worker; a custom method is snapshotted so later edits/deletes never touch this job.
-      let options: Prisma.InputJsonObject = { ...rest, method, preset: method };
+      const docChapters = doc.chapters;
+      let words = doc.words;
+      const picked = chapters && [...chapters].sort((a, b) => a - b);
+      if (picked) {
+        if (!Array.isArray(docChapters) || picked.some((i) => i >= docChapters.length)) throw new BadRequestException('Invalid chapters');
+        words = picked.reduce((sum, i) => sum + (Number((docChapters[i] as { words?: number } | null)?.words) || 0), 0);
+      }
+      const common = {
+        ...rest,
+        ...(picked && { chapters: picked }),
+        ...(extras?.length && { extras }),
+        modelId: entry.id,
+        model: entry.model,
+      };
+      let options: Prisma.InputJsonObject = { ...common, method, preset: method };
       if (method.startsWith('custom:')) {
         const m = await tx.summaryMethod.findFirst({ where: { id: method.slice(7), userId: user.id } });
         if (!m) throw new NotFoundException('Method not found');
-        options = { ...rest, method, methodName: m.name, customInstructions: m.instructions };
+        options = { ...common, method, methodName: m.name, customInstructions: m.instructions };
         customChars = m.instructions.length;
       }
-      const credits = creditsFor(doc.words);
+      const credits = creditsForJob(words, entry.multiplier);
       const balance = await this.ledger.balance(user.id, tx);
       if (balance < credits) {
         this.logger.warn(`Not enough credits: user ${user.id}, needed ${credits}, balance ${balance}`);

@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind v4 preflight dropped the pointer cursor on buttons. */
+@layer base {
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
+}
+
 .prose-summary { line-height: 1.6; }
 .prose-summary > * + * { margin-top: 0.75rem; }
 .prose-summary h1 { font-size: 1.5rem; font-weight: 700; }

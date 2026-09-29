@@ -11,6 +11,7 @@ import { HealthController } from './health.controller';
 import { JobsModule } from './jobs/jobs.module';
 import { MethodsModule } from './methods/methods.module';
 import { MeController } from './me.controller';
+import { ModelsController } from './models.controller';
 import { PrismaModule } from './prisma.module';
 
 // apps/web/dist only exists after `pnpm --filter @summarize/web build`; served here so production is a single deployable.
@@ -27,7 +28,7 @@ const webDist = join(process.cwd(), '../web/dist');
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     ...(existsSync(webDist) ? [ServeStaticModule.forRoot({ rootPath: webDist, exclude: ['/api/{*path}'] })] : []),
   ],
-  controllers: [HealthController, MeController],
+  controllers: [HealthController, MeController, ModelsController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

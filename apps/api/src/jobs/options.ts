@@ -1,6 +1,9 @@
 // Must match apps/worker/summarize_worker/prompts.py
 export const LANGUAGES = ['auto', 'en', 'it', 'nl', 'fr', 'de', 'es'] as const;
-export const FRACTIONS = [3, 5, 10] as const;
+export const FRACTIONS = [3, 5, 10] as const; // legacy, preferences only
+export const EXTRAS = ['glossary', 'questions', 'takeaways'] as const;
+export const LENGTH_MIN = 5;
+export const LENGTH_MAX = 50;
 export const PRESETS = ['studio', 'schematico', 'abstract'] as const;
 export const MAX_ACTIVE_SUMMARIES = 3;
 export const MAX_METHODS = 20;

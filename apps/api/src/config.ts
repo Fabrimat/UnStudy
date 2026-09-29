@@ -22,7 +22,35 @@ const LOG_LEVELS: Record<string, LogLevel[]> = {
 const logLevel = (process.env.LOG_LEVEL || 'info').trim().toLowerCase();
 if (!LOG_LEVELS[logLevel]) throw new Error(`Invalid LOG_LEVEL ${logLevel}, expected debug|info|warn|error`);
 
+export type ModelEntry = { id: string; label: string; model: string; multiplier: number };
+
+// LLM_MODELS: JSON [{id,label,model,multiplier}], first = default. Unset -> single 'default' entry. Set but invalid -> throws.
+export function parseModels(raw: string | undefined, fallbackModel: string | undefined): ModelEntry[] {
+  if (!raw?.trim()) return [{ id: 'default', label: 'Default', model: fallbackModel || 'default', multiplier: 1 }];
+  let list: unknown;
+  try {
+    list = JSON.parse(raw);
+  } catch {
+    throw new Error('LLM_MODELS is not valid JSON');
+  }
+  if (!Array.isArray(list) || !list.length) throw new Error('LLM_MODELS must be a non-empty array');
+  const seen = new Set<string>();
+  for (const e of list as Record<string, unknown>[]) {
+    const ok =
+      e && typeof e === 'object' &&
+      typeof e.id === 'string' && /^[a-z0-9-]{1,32}$/.test(e.id) &&
+      typeof e.label === 'string' && e.label.trim() &&
+      typeof e.model === 'string' && e.model.trim() &&
+      typeof e.multiplier === 'number' && e.multiplier > 0 && e.multiplier <= 100;
+    if (!ok) throw new Error('LLM_MODELS has an invalid entry');
+    if (seen.has(e.id as string)) throw new Error('LLM_MODELS has a duplicate id');
+    seen.add(e.id as string);
+  }
+  return list as ModelEntry[];
+}
+
 export const config = {
+  models: parseModels(process.env.LLM_MODELS, process.env.LLM_MODEL),
   webOrigin: need('WEB_ORIGIN'),
   logLevel,
   logLevels: LOG_LEVELS[logLevel],

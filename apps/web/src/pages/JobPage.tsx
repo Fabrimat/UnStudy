@@ -1,12 +1,13 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
-import { Link, useParams } from 'react-router';
-import { api, Job } from '../api';
+import { Link, useNavigate, useParams } from 'react-router';
+import { api, Doc, Job } from '../api';
 
 export default function JobPage() {
   const { id } = useParams();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [job, setJob] = useState<Job | null>(null);
   const [content, setContent] = useState<string | null>(null);
   const [connectionLost, setConnectionLost] = useState(false);
@@ -28,6 +29,9 @@ export default function JobPage() {
     return () => source.close();
   }, [id, qc]);
 
+  // Shares the cache with DocumentPage; only tells whether the PDF is still there.
+  const doc = useQuery({ queryKey: ['documents', job?.documentId], queryFn: () => api<Doc>(`/documents/${job!.documentId}`), enabled: !!job });
+  const fileDeleted = doc.data?.fileDeleted ?? false;
   const done = job?.status === 'done';
   useEffect(() => {
     if (!done) return;
@@ -65,6 +69,17 @@ export default function JobPage() {
           <p className="text-sm text-gray-600">{job.progress}% · {job.status === 'queued' ? 'Waiting in queue' : job.phase}</p>
         </>
       )}
+      {(job.status === 'done' || job.status === 'failed') && (
+        <button
+          disabled={fileDeleted}
+          title={fileDeleted ? 'The original file was deleted' : undefined}
+          onClick={() => navigate(`/documents/${job.documentId}?from=${job.id}`)}
+          className="rounded border bg-white px-4 py-2 disabled:opacity-50"
+        >
+          Regenerate with other options
+        </button>
+      )}
+      <br />
       <Link to="/" className="underline">Back to dashboard</Link>
     </section>
   );

@@ -4,7 +4,7 @@ from typing import Callable
 
 from .checks import fix_format, run_checks
 from .llm import Usage, call_model
-from .prompts import FRACTION_NAMES, VERIFY_INSTRUCTIONS
+from .prompts import VERIFY_INSTRUCTIONS
 from .text import Chapter
 
 log = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ def _header(line: str | None, chapter: Chapter) -> str | None:
     return f"{line}, pp. {chapter.page_from}–{chapter.page_to}"
 
 
-def summarize_chapters(client, model: str, chapters: list[Chapter], instructions: str, *, fraction: int,
+def summarize_chapters(client, model: str, chapters: list[Chapter], instructions: str, *, length_percent: int,
                        bibliographic_line: str | None, verify: bool = True,
                        on_progress: Callable[[int, str], None] | None = None,
                        usage: Usage | None = None,
@@ -48,8 +48,8 @@ def summarize_chapters(client, model: str, chapters: list[Chapter], instructions
     for i, chapter in enumerate(chapters):
         label = f"Chapter {i + 1}/{len(chapters)}"
         header = _header(bibliographic_line, chapter)
-        target = chapter.words // fraction
-        prompt = f"Target length: about {target} words ({FRACTION_NAMES[fraction]} of the original).\n\n"
+        target = chapter.words * length_percent // 100
+        prompt = f"Target length: about {target} words ({length_percent}% of the original).\n\n"
         if header:
             prompt += f"Use exactly this bibliographic line under the title:\n{header}\n\n"
         prompt += f"Reading to summarize:\n\n{chapter.text}"
@@ -68,6 +68,6 @@ def summarize_chapters(client, model: str, chapters: list[Chapter], instructions
             # ponytail: a much shorter answer is a refusal or a truncation, so the draft is kept
             if len(checked.split()) > 0.7 * len(text.split()):
                 text = fix_format(checked, header)
-        warnings += [f"chapter {i + 1}: {w}" for w in run_checks(text, chapter.text, fraction)]
+        warnings += [f"chapter {i + 1}: {w}" for w in run_checks(text, chapter.text, length_percent)]
         summaries.append(text)
     return "\n\n---\n\n".join(summaries) + "\n", warnings

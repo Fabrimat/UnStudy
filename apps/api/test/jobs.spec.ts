@@ -4,7 +4,7 @@ import { PrismaService } from '../src/prisma.service';
 import { StorageService } from '../src/storage/storage.service';
 import { createApp, loginAs, ORIGIN, resetDb } from './helpers';
 
-const OPTIONS = { language: 'auto', fraction: 3, method: 'studio' };
+const OPTIONS = { language: 'auto', lengthPercent: 33, method: 'studio' };
 
 describe('jobs and credits', () => {
   let app: INestApplication;
@@ -40,7 +40,7 @@ describe('jobs and credits', () => {
     await grant(user.id, 10);
     const doc = await analyzedDoc(user.id, 2500);
     const res = await start(cookie, { documentId: doc.id, ...OPTIONS, bibliographicLine: '**A** – *B*' }).expect(201);
-    expect(res.body).toMatchObject({ kind: 'summarize', status: 'queued', credits: 3, options: { ...OPTIONS, bibliographicLine: '**A** – *B*' } });
+    expect(res.body).toMatchObject({ kind: 'summarize', status: 'queued', credits: 3, options: { ...OPTIONS, modelId: 'default', bibliographicLine: '**A** – *B*' } });
     expect(res.body.warnings).toBeUndefined();
     expect(await balance(cookie)).toBe(7);
     expect(await prisma.creditLedger.findMany({ where: { jobId: res.body.id } })).toMatchObject([{ type: 'reserve', amount: -3 }]);
@@ -71,7 +71,7 @@ describe('jobs and credits', () => {
     const pending = await prisma.document.create({ data: { userId: user.id, filename: 'p.pdf', sizeBytes: 1, s3Key: 'k' } });
     await start(cookie, { documentId: pending.id, ...OPTIONS }).expect(409);
     await start(bob.cookie, { documentId: doc.id, ...OPTIONS }).expect(404);
-    await start(cookie, { documentId: doc.id, ...OPTIONS, fraction: 4 }).expect(400);
+    await start(cookie, { documentId: doc.id, ...OPTIONS, lengthPercent: 4 }).expect(400);
     await start(cookie, { documentId: doc.id, ...OPTIONS, method: 'poem' }).expect(400);
     await start(cookie, { documentId: doc.id, ...OPTIONS, bibliographicLine: 'a\nb' }).expect(400);
     const job = await start(cookie, { documentId: doc.id, ...OPTIONS }).expect(201);

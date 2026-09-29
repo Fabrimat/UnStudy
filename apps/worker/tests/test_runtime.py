@@ -11,7 +11,7 @@ from summarize_worker.llm import FakeClient
 from summarize_worker.text import clean_pages, extract_pages, split_chapters
 from tests.pdfs import make_pdf
 
-OPTIONS = {"language": "auto", "fraction": 3, "preset": "studio"}
+OPTIONS = {"language": "auto", "lengthPercent": 33, "preset": "studio"}
 TEXT_PDF = make_pdf(["Chapter 1 Origins\n" + "Democracy shares power. " * 30,
                      "Chapter 2 Growth\n" + "Consensus spreads power. " * 30])
 
@@ -277,3 +277,61 @@ def test_legacy_method_only_and_custom_without_snapshot(conn, storage, settings,
     run_one(conn, storage, settings, "summarize", client)
     run_one(conn, storage, settings, "summarize", client)
     assert job(conn, bad_id)["status"] == "failed" and balance(conn, user) == 3 and client.calls == []
+
+
+def _summarize(conn, storage, settings, opts, *, client=None):
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3, options=opts)
+    pages, toc, _ = extract_pages(TEXT_PDF, None)
+    n = len(split_chapters(clean_pages(pages), toc))
+    conn.execute('UPDATE "Document" SET chapters = %s WHERE id = %s',
+                 (Jsonb([{"title": str(i), "words": 1} for i in range(n)]), doc_id))
+    client = client or FakeClient()
+    run_one(conn, storage, settings, "summarize", client)
+    return user, job_id, client
+
+
+def test_chapter_filter_sends_only_chosen_chapters(conn, storage, settings):
+    _, job_id, client = _summarize(conn, storage, settings, {**OPTIONS, "chapters": [1]})
+    assert job(conn, job_id)["status"] == "done"
+    users = [c[1]["content"] for c in client.calls]
+    assert len(client.calls) == 2 and "Consensus spreads" in users[0] and "Democracy shares" not in users[0]
+
+
+def test_chapter_count_mismatch_is_file_changed_and_refunded(conn, storage, settings):
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3,
+                                options={**OPTIONS, "chapters": [0]})
+    conn.execute('UPDATE "Document" SET chapters = %s WHERE id = %s', (Jsonb([{"title": "x", "words": 1}] * 7), doc_id))
+    client = FakeClient()
+    run_one(conn, storage, settings, "summarize", client)
+    assert job(conn, job_id)["status"] == "failed" and balance(conn, user) == 3 and client.calls == []
+
+
+def test_length_percent_and_legacy_fraction_reach_prompts(conn, storage, settings):
+    _, _, client = _summarize(conn, storage, settings, {"language": "auto", "lengthPercent": 10, "preset": "studio"})
+    assert "about 10% of the original length" in client.calls[0][0]["content"]
+    assert "(10% of the original)" in client.calls[0][1]["content"]
+    _, _, client = _summarize(conn, storage, settings, {"language": "auto", "fraction": 5, "preset": "studio"})
+    assert "(20% of the original)" in client.calls[0][1]["content"] and "about 20% of" in client.calls[0][0]["content"]
+
+
+def test_extras_reach_the_draft_system_prompt(conn, storage, settings):
+    _, _, client = _summarize(conn, storage, settings, {**OPTIONS, "extras": ["glossary"]})
+    assert "EXTRA SECTIONS" in client.calls[0][0]["content"]
+
+
+def test_known_model_id_uses_worker_catalog_not_options_model(conn, storage, settings):
+    seen = []
+
+    class Spy(FakeClient):
+        def create(self, **kw):
+            seen.append(kw["model"])
+            return super().create(**kw)
+
+    _, job_id, _ = _summarize(conn, storage, settings, {**OPTIONS, "modelId": "alt", "model": "evil-model"}, client=Spy())
+    assert set(seen) == {"alt-model"} and job(conn, job_id)["model"] == "alt-model"
+
+
+def test_unknown_model_id_fails_refunded_without_retry_or_calls(conn, storage, settings):
+    user, job_id, client = _summarize(conn, storage, settings, {**OPTIONS, "modelId": "nope", "model": "x"})
+    row = job(conn, job_id)
+    assert row["status"] == "failed" and row["attempts"] == 1 and balance(conn, user) == 3 and client.calls == []

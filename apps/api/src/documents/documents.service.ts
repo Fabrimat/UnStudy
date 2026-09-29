@@ -19,6 +19,7 @@ export function toDocDto(doc: Document & { jobs?: Job[]; _count?: { jobs: number
   return {
     id, filename, sizeBytes, status, rejectReason, pages, words, chapters, createdAt,
     credits: words ? creditsFor(words) : null,
+    fileDeleted: !!doc.fileDeletedAt,
     // An interrupted upload (no PUT, no confirm) never gets an analyze job, so the doc is stuck
     // "uploaded" forever; the web uses this to tell that apart from a normal in-flight analyze (F3).
     analysisQueued: (doc._count?.jobs ?? 0) > 0,

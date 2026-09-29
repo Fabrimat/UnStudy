@@ -16,7 +16,7 @@ def _letters(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", normalize(s))
 
 
-def run_checks(summary: str, original: str, fraction: int = 3) -> list[str]:
+def run_checks(summary: str, original: str, length_percent: int = 33) -> list[str]:
     """Quotes not found in the original, leftover [placeholders], length off target. Never blocks delivery."""
     problems = []
     # running headers like "CONSENSUS MODEL OF DEMOCRACY  45" split quotes across pages: drop them first
@@ -34,7 +34,7 @@ def run_checks(summary: str, original: str, fraction: int = 3) -> list[str]:
     outside_quotes = re.sub(r"“[^“”\n]*”|\"[^\"\n]*\"", "", summary)  # [..] inside quotes are legitimate inserts
     for leftover in re.findall(r"\[[^\]]*\]", outside_quotes):
         problems.append(f"square brackets left: {leftover}")
-    words, target = len(summary.split()), len(original.split()) // fraction
+    words, target = len(summary.split()), len(original.split()) * length_percent // 100
     if not 0.75 * target <= words <= 1.25 * target:
         problems.append(f"length {words} words, target ~{target}")
     return problems

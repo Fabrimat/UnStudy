@@ -1,6 +1,7 @@
-import { Body, Controller, Get, NotFoundException, Patch, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Patch, Query, UseGuards } from '@nestjs/common';
 import { Prisma, User } from '@summarize/db';
 import { CurrentUser, SessionGuard } from './auth/session.guard';
+import { config } from './config';
 import { LedgerService } from './credits/ledger.service';
 import { PreferencesDto } from './preferences.dto';
 import { page, PageQueryDto } from './pagination';
@@ -18,6 +19,7 @@ export class MeController {
 
   @Patch('preferences')
   async setPreferences(@CurrentUser() user: User, @Body() dto: PreferencesDto) {
+    if (typeof dto.model === 'string' && !config.models.some((m) => m.id === dto.model)) throw new BadRequestException('Unknown model');
     return this.prisma.$transaction(async (tx) => {
       // User row lock: two concurrent PATCHes must not lose each other's merge.
       const [row] = await tx.$queryRaw<{ preferences: Prisma.JsonObject }[]>`SELECT preferences FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;

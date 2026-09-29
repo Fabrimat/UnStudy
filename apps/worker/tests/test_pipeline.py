@@ -32,12 +32,12 @@ class FlakyClient:
 def test_each_chapter_gets_a_draft_and_a_fact_check():
     client, progress, usage = FakeClient(), [], Usage()
     chapters = [Chapter("A", 9, 29, "alpha " * 300), Chapter("B", 30, 30, "beta " * 300)]
-    md, warnings = summarize_chapters(client, "m", chapters, "SYSTEM", fraction=3,
+    md, warnings = summarize_chapters(client, "m", chapters, "SYSTEM", length_percent=33,
                                       bibliographic_line="**Lijphart** – *Patterns*",
                                       on_progress=lambda p, ph: progress.append((p, ph)), usage=usage)
     assert len(client.calls) == 4
     assert client.calls[0][0] == {"role": "system", "content": "SYSTEM"}
-    assert "about 100 words (one third of the original)" in client.calls[0][1]["content"]
+    assert "about 99 words (33% of the original)" in client.calls[0][1]["content"]
     assert "ORIGINAL TEXT:" in client.calls[1][1]["content"]
     assert "**Lijphart** – *Patterns*, pp. 9–29" in md and "**Lijphart** – *Patterns*, p. 30" in md
     assert md.count("# Fake Summary") == 2 and "\n\n---\n\n" in md
@@ -51,7 +51,7 @@ def test_each_chapter_gets_a_draft_and_a_fact_check():
 def test_a_too_short_fact_check_keeps_the_draft():
     client = FakeClient(replies=[DEFAULT_REPLY, "Sorry, I cannot help."])
     md, _ = summarize_chapters(client, "m", [Chapter("A", None, None, "alpha " * 300)], "S",
-                               fraction=3, bibliographic_line="**A** – *B*")
+                               length_percent=33, bibliographic_line="**A** – *B*")
     assert "Fake Summary" in md and "Sorry" not in md
     assert "**A** – *B*\n" in md  # no page range known
 

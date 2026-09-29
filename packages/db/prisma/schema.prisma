@@ -46,7 +46,7 @@ model User {
   name        String?
   createdAt   DateTime        @default(now())
   deletedAt   DateTime?
-  /// { language?, fraction?, method? } defaults for new jobs
+  /// { language?, lengthPercent?, method?, model? } defaults for new jobs (legacy: fraction)
   preferences Json            @default("{}")
   accounts    AuthAccount[]
   sessions    Session[]
@@ -126,7 +126,7 @@ model Job {
   documentId    String         @db.Uuid
   document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
   kind          JobKind
-  /// { language, fraction, preset, bibliographicLine? }
+  /// { language, lengthPercent, method, preset?|customInstructions?, chapters?, extras?, modelId, model, bibliographicLine? } (legacy: fraction)
   options       Json           @default("{}")
   status        JobStatus      @default(queued)
   attempts      Int            @default(0)

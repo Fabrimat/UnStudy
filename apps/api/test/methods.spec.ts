@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { config } from '../src/config';
 import { PrismaService } from '../src/prisma.service';
 import { createApp, loginAs, ORIGIN, resetDb } from './helpers';
 
@@ -21,7 +22,7 @@ describe('methods and preferences', () => {
     (await send('post', cookie, '/api/methods', { name, instructions }).expect(201)).body;
   const doc = (userId: string, words = 2500) =>
     prisma.document.create({ data: { userId, filename: 'a.pdf', sizeBytes: 1, s3Key: `users/${userId}/x-${Math.random()}.pdf`, status: 'analyzed', pages: 10, words } });
-  const start = (cookie: string, body: object) => send('post', cookie, '/api/jobs', { language: 'auto', fraction: 3, ...body });
+  const start = (cookie: string, body: object) => send('post', cookie, '/api/jobs', { language: 'auto', lengthPercent: 33, ...body });
   const grant = (userId: string, amount: number) => prisma.creditLedger.create({ data: { userId, type: 'grant', amount } });
 
   it('does CRUD and trims input', async () => {
@@ -76,10 +77,10 @@ describe('methods and preferences', () => {
     const d = await doc(user.id);
     const m = await mk(cookie, 'Mine', 'secret text');
     const res = await start(cookie, { documentId: d.id, method: `custom:${m.id}` }).expect(201);
-    expect(res.body.options).toEqual({ language: 'auto', fraction: 3, method: `custom:${m.id}`, methodName: 'Mine' });
+    expect(res.body.options).toEqual({ language: 'auto', lengthPercent: 33, method: `custom:${m.id}`, methodName: 'Mine', modelId: 'default' });
     expect(JSON.stringify(res.body)).not.toContain('secret text');
     const stored = async () => (await prisma.job.findUniqueOrThrow({ where: { id: res.body.id } })).options;
-    const snapshot = { language: 'auto', fraction: 3, method: `custom:${m.id}`, methodName: 'Mine', customInstructions: 'secret text' };
+    const snapshot = { language: 'auto', lengthPercent: 33, method: `custom:${m.id}`, methodName: 'Mine', customInstructions: 'secret text', modelId: 'default', model: config.models[0].model };
     expect(await stored()).toEqual(snapshot);
     await send('patch', cookie, `/api/methods/${m.id}`, { name: 'Renamed', instructions: 'changed' }).expect(200);
     expect(await stored()).toEqual(snapshot);
@@ -93,7 +94,7 @@ describe('methods and preferences', () => {
     await grant(user.id, 10);
     const d = await doc(user.id);
     const res = await start(cookie, { documentId: d.id, method: 'abstract' }).expect(201);
-    expect(res.body.options).toEqual({ language: 'auto', fraction: 3, method: 'abstract', preset: 'abstract' });
+    expect(res.body.options).toEqual({ language: 'auto', lengthPercent: 33, method: 'abstract', preset: 'abstract', modelId: 'default' });
   });
 
   it('rejects a foreign custom method without reserving credits, and invalid methods', async () => {
