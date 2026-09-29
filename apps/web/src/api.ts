@@ -13,6 +13,20 @@ export type Doc = {
   rejectReason: string | null; pages: number | null; words: number | null; chapters: Chapter[] | null;
   credits: number | null; createdAt: string; jobs: Job[]; analysisQueued: boolean;
 };
+export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
+export type JobWithDoc = Job & { document: { id: string; filename: string } };
+export type LedgerEntry = { id: string; type: string; amount: number; createdAt: string; jobId: string | null; filename: string | null };
+export type Stats = { documents: number; summariesDone: number; creditsSpent: number; pagesSummarized: number };
+
+// Builds "?a=1&b=2", skipping empty values.
+export const qs = (params: Record<string, string | number | boolean | null | undefined>) => {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.set(k, String(v));
+  const s = u.toString();
+  return s ? `?${s}` : '';
+};
+
+export const pageCount = (p: Page<unknown>) => Math.max(1, Math.ceil(p.total / p.pageSize));
 
 const UPLOAD_TIMEOUT_MS = 15 * 60_000;
 
@@ -20,6 +34,19 @@ const UPLOAD_TIMEOUT_MS = 15 * 60_000;
 // document is stuck "uploaded" forever instead of moving on to "Analyzing…" (F3).
 export const uploadFailed = (d: Doc) =>
   d.status === 'uploaded' && !d.analysisQueued && Date.now() - new Date(d.createdAt).getTime() > UPLOAD_TIMEOUT_MS;
+
+export const busy = (d: Doc) =>
+  (d.status === 'uploaded' && !uploadFailed(d)) || d.jobs.some((j) => j.status === 'queued' || j.status === 'running');
+
+export function docStatus(d: Doc) {
+  if (d.status === 'uploaded') return uploadFailed(d) ? 'Upload failed — please upload the file again' : 'Analyzing…';
+  if (d.status === 'rejected') return `Rejected: ${d.rejectReason}`;
+  const job = d.jobs[0];
+  if (!job) return `${d.pages} pages · ${d.credits} credits`;
+  if (job.status === 'done') return 'Done';
+  if (job.status === 'failed') return 'Failed';
+  return `${job.progress}%`;
+}
 
 export class ApiError extends Error {
   constructor(public status: number, message: string, public body: any) {

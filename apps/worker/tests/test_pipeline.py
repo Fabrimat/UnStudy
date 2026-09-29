@@ -101,3 +101,12 @@ def test_docx_sandboxes_image_fetches():
         srv.close()
     assert data[:2] == b"PK"
     assert connections == []  # pandoc never opened a socket to fetch the "remote" image
+
+
+def test_a_raising_on_call_neither_retries_nor_changes_the_result():
+    client = FakeClient(["hello"])
+
+    def boom(*_):
+        raise RuntimeError("recorder down")
+    assert call_model(client, "fake", "p", on_call=boom) == "hello"
+    assert len(client.calls) == 1

@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Logger, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Logger, Param, ParseUUIDPipe, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { User } from '@summarize/db';
 import { Response } from 'express';
 import { CurrentUser, SessionGuard } from '../auth/session.guard';
-import { CreateJobDto } from './jobs.dto';
+import { CreateJobDto, ListJobsDto } from './jobs.dto';
 import { JobsService } from './jobs.service';
 
 @Controller('jobs')
@@ -17,9 +17,26 @@ export class JobsController {
     return this.jobs.create(user, dto);
   }
 
+  @Get()
+  list(@CurrentUser() user: User, @Query() query: ListJobsDto) {
+    return this.jobs.list(user, query);
+  }
+
   @Get(':id')
   get(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.jobs.get(user, id);
+  }
+
+  @Get(':id/content')
+  @Header('Content-Type', 'text/markdown; charset=utf-8')
+  content(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.jobs.content(user, id);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.jobs.remove(user, id);
   }
 
   @Get(':id/download')

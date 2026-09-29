@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import Markdown from 'react-markdown';
 import { Link, useParams } from 'react-router';
 import { api, Job } from '../api';
 
@@ -7,6 +8,7 @@ export default function JobPage() {
   const { id } = useParams();
   const qc = useQueryClient();
   const [job, setJob] = useState<Job | null>(null);
+  const [content, setContent] = useState<string | null>(null);
   const [connectionLost, setConnectionLost] = useState(false);
 
   useEffect(() => {
@@ -26,6 +28,15 @@ export default function JobPage() {
     return () => source.close();
   }, [id, qc]);
 
+  const done = job?.status === 'done';
+  useEffect(() => {
+    if (!done) return;
+    // not api(): the response is markdown, not JSON
+    fetch(`/api/jobs/${id}/content`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.text() : Promise.reject()))
+      .then(setContent, () => setContent(null));
+  }, [done, id]);
+
   async function download(format: 'md' | 'docx') {
     const { url } = await api<{ url: string }>(`/jobs/${id}/download?format=${format}`);
     window.location.href = url;
@@ -42,6 +53,7 @@ export default function JobPage() {
             <button onClick={() => download('md')} className="rounded bg-black px-4 py-2 text-white">Download .md</button>
             <button onClick={() => download('docx')} className="rounded bg-black px-4 py-2 text-white">Download .docx</button>
           </div>
+          {content && <div className="prose-summary rounded border bg-white p-4"><Markdown disallowedElements={['img']}>{content}</Markdown></div>}
         </>
       )}
       {job.status === 'failed' && <p className="text-red-600">{job.error}</p>}
@@ -53,7 +65,7 @@ export default function JobPage() {
           <p className="text-sm text-gray-600">{job.progress}% · {job.status === 'queued' ? 'Waiting in queue' : job.phase}</p>
         </>
       )}
-      <Link to="/" className="underline">Back to documents</Link>
+      <Link to="/" className="underline">Back to dashboard</Link>
     </section>
   );
 }

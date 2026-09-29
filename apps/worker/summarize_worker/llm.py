@@ -45,8 +45,22 @@ def make_client(base_url: str, api_key: str):
 
 
 def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens: int = 32000, attempts: int = 5,
-               on_tokens: Callable[[int], None] | None = None, usage: Usage | None = None) -> str:
-    """Streams one completion. on_tokens(words_written) fires about every 2 s (also while the model reasons)."""
+               on_tokens: Callable[[int], None] | None = None, usage: Usage | None = None,
+               on_call: Callable[[int, int, int, bool], None] | None = None) -> str:
+    """Streams one completion. on_tokens(words_written) fires about every 2 s (also while the model reasons).
+    on_call(input_tokens, output_tokens, duration_ms, ok) fires once when the call ends, success or final failure."""
+    # ponytail: one on_call per logical call, not per HTTP retry; tokens are those of the last attempt
+    # (a failed attempt reports none) and duration spans all attempts including backoff.
+    call_start = time.time()
+    tokens_in = tokens_out = 0
+
+    def report(ok: bool):
+        if on_call:
+            try:
+                on_call(tokens_in, tokens_out, int((time.time() - call_start) * 1000), ok)
+            except Exception:
+                log.warning("on_call failed", exc_info=True)  # a recorder must never cost a retry or mask the real error
+
     messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
     for attempt in range(attempts):
         if on_tokens:
@@ -70,14 +84,18 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
                     parts.append(choice.delta.content)
                 if choice.finish_reason == "length":
                     log.warning(f"output truncated at max_tokens={max_tokens}")
+            tokens_in = getattr(final_usage, "prompt_tokens", 0) or 0
+            tokens_out = getattr(final_usage, "completion_tokens", 0) or 0
             if usage is not None and final_usage is not None:
                 usage.input_tokens += final_usage.prompt_tokens or 0
                 usage.output_tokens += final_usage.completion_tokens or 0
             log.debug(f"llm call model={model} duration={time.time() - start:.1f}s "
                      f"in={getattr(final_usage, 'prompt_tokens', None)} out={getattr(final_usage, 'completion_tokens', None)}")
+            report(True)
             return "".join(parts).strip()
         except Exception as e:
             if attempt == attempts - 1:
+                report(False)
                 raise
             wait = 2 ** attempt
             log.warning(f"LLM error ({e}); retrying in {wait}s")

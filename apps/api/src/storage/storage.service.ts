@@ -1,4 +1,4 @@
-import { GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { config } from '../config';
@@ -77,5 +77,23 @@ export class StorageService implements OnModuleInit {
 
   async put(key: string, body: Buffer, contentType: string) {
     await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }));
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    return Buffer.from(await res.Body!.transformToByteArray());
+  }
+
+  // A missing key counts as deleted (S3 reports it as success); any per-key error throws.
+  async delete(keys: string[]) {
+    for (let i = 0; i < keys.length; i += 1000) {
+      const res = await this.s3.send(
+        new DeleteObjectsCommand({
+          Bucket: this.bucket,
+          Delete: { Objects: keys.slice(i, i + 1000).map((Key) => ({ Key })), Quiet: true },
+        }),
+      );
+      if (res.Errors?.length) throw new Error(`S3 delete failed for ${res.Errors.length} object(s)`);
+    }
   }
 }

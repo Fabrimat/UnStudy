@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { User } from '@summarize/db';
 import { CurrentUser, SessionGuard } from '../auth/session.guard';
-import { CreateDocumentDto } from './documents.dto';
+import { CreateDocumentDto, ListDocumentsDto, RenameDocumentDto } from './documents.dto';
 import { DocumentsService } from './documents.service';
 
 @Controller('documents')
@@ -20,8 +20,19 @@ export class DocumentsController {
   }
 
   @Get()
-  list(@CurrentUser() user: User) {
-    return this.documents.list(user);
+  list(@CurrentUser() user: User, @Query() query: ListDocumentsDto) {
+    return this.documents.list(user, query);
+  }
+
+  @Patch(':id')
+  rename(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RenameDocumentDto) {
+    return this.documents.rename(user, id, dto.filename);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.documents.remove(user, id);
   }
 
   @Get(':id')

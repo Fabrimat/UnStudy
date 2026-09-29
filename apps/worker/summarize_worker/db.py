@@ -48,27 +48,43 @@ def reject_document(conn, job: dict, reason: str) -> None:
                      (reason, job["documentId"]))
 
 
+def record_call(conn, job: dict, rec: dict) -> None:
+    """One LlmCall row, written on the autocommit connection so it survives crashes and retries."""
+    conn.execute("""INSERT INTO "LlmCall" ("jobId", attempt, chapter, phase, model, "inputTokens", "outputTokens",
+                                           "durationMs", ok)
+                    VALUES (%s, %s, %s, %s::"LlmPhase", %s, %s, %s, %s, %s)""",
+                 (job["id"], job["attempts"], rec["chapter"], rec["phase"], rec["model"], rec["inputTokens"],
+                  rec["outputTokens"], rec["durationMs"], rec["ok"]))
+
+
+# Job totals are the sum over every attempt's LlmCall rows (retries cost real tokens too).
+_TOTALS = """"inputTokens" = (SELECT COALESCE(SUM("inputTokens"), 0) FROM "LlmCall" WHERE "jobId" = "Job".id),
+             "outputTokens" = (SELECT COALESCE(SUM("outputTokens"), 0) FROM "LlmCall" WHERE "jobId" = "Job".id)"""
+
+
 def finish_summary(conn, job: dict, *, md_key: str, docx_key: str, warnings: list[str],
-                   input_tokens: int, output_tokens: int) -> None:
+                   model: str, duration_ms: int) -> None:
     with conn.transaction():
         row = conn.execute(
-            """UPDATE "Job" SET status = 'done', progress = 100, phase = 'done', "finishedAt" = now(),
-                      "resultMdKey" = %s, "resultDocxKey" = %s, warnings = %s, "inputTokens" = %s, "outputTokens" = %s
+            f"""UPDATE "Job" SET status = 'done', progress = 100, phase = 'done', "finishedAt" = now(),
+                      "resultMdKey" = %s, "resultDocxKey" = %s, warnings = %s, {_TOTALS},
+                      model = %s, "durationMs" = %s
                WHERE id = %s AND status = 'running' AND attempts = %s RETURNING id""",
-            (md_key, docx_key, Jsonb(warnings), input_tokens, output_tokens, job["id"], job["attempts"])).fetchone()
+            (md_key, docx_key, Jsonb(warnings), model, duration_ms, job["id"], job["attempts"])).fetchone()
         if row:  # the unique (jobId, type) index makes a second charge impossible anyway
             conn.execute("""INSERT INTO "CreditLedger" ("userId", type, amount, "jobId")
                             VALUES (%s, 'charge', 0, %s) ON CONFLICT DO NOTHING""", (job["userId"], job["id"]))
 
 
-def _fail(conn, job_id, attempts: int | None = None) -> None:
+def _fail(conn, job_id, attempts: int | None = None, model: str | None = None) -> None:
     # attempts=None (recover_stale): the row is already locked FOR UPDATE and its own current
     # attempts was just read in the same transaction, so no fencing is needed there.
     fence = ' AND attempts = %s' if attempts is not None else ''
-    params = (SUMMARY_ERROR, ANALYZE_ERROR, job_id) + ((attempts,) if attempts is not None else ())
+    params = (SUMMARY_ERROR, ANALYZE_ERROR, model, job_id) + ((attempts,) if attempts is not None else ())
     row = conn.execute(
         f"""UPDATE "Job" SET status = 'failed', phase = 'failed', "finishedAt" = now(),
-                  error = CASE WHEN kind = 'summarize' THEN %s ELSE %s END
+                  error = CASE WHEN kind = 'summarize' THEN %s ELSE %s END, {_TOTALS},
+                  model = COALESCE(%s, model)
            WHERE id = %s AND status IN ('running', 'queued'){fence}
            RETURNING id, "userId", "documentId", kind, credits""", params).fetchone()
     if not row:
@@ -81,20 +97,20 @@ def _fail(conn, job_id, attempts: int | None = None) -> None:
                         WHERE id = %s AND status = 'uploaded'""", (ANALYZE_ERROR, row["documentId"]))
 
 
-def fail(conn, job: dict) -> None:
+def fail(conn, job: dict, model: str | None = None) -> None:
     """Fail immediately, no retry (e.g. the source file changed after pricing): refunds like any other failure."""
     with conn.transaction():
-        _fail(conn, job["id"], job["attempts"])
+        _fail(conn, job["id"], job["attempts"], model)
 
 
-def fail_or_retry(conn, job: dict) -> None:
+def fail_or_retry(conn, job: dict, model: str | None = None) -> None:
     """After an exception: requeue while attempts remain, else fail (refunding summaries)."""
     with conn.transaction():
         if job["attempts"] < MAX_ATTEMPTS:
             conn.execute("""UPDATE "Job" SET status = 'queued', phase = 'retrying'
                             WHERE id = %s AND status = 'running' AND attempts = %s""", (job["id"], job["attempts"]))
         else:
-            _fail(conn, job["id"], job["attempts"])
+            _fail(conn, job["id"], job["attempts"], model)
 
 
 def recover_stale(conn, stale_after: str = "10 minutes") -> int:

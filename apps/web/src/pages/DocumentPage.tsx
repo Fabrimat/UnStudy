@@ -1,26 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import Select from '../Select';
 import { api, ApiError, Doc, Job, uploadFailed, useMe } from '../api';
 
 const LANGUAGES = [['auto', 'Same as the document'], ['en', 'English'], ['it', 'Italian'], ['nl', 'Dutch'], ['fr', 'French'], ['de', 'German'], ['es', 'Spanish']] as const;
 const FRACTIONS = [[3, '1/3 of the original'], [5, '1/5 of the original'], [10, '1/10 of the original']] as const;
 const PRESETS = [['studio', 'Study summary (continuous prose)'], ['schematico', 'Structured notes (bullet points)'], ['abstract', 'Short abstract']] as const;
-
-function Select<T extends string | number>(props: { label: string; value: T; onChange: (v: T) => void; options: readonly (readonly [T, string])[] }) {
-  return (
-    <label className="block">
-      {props.label}
-      <select
-        className="mt-1 w-full rounded border bg-white p-2"
-        value={props.value}
-        onChange={(e) => props.onChange((typeof props.value === 'number' ? Number(e.target.value) : e.target.value) as T)}
-      >
-        {props.options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}
-      </select>
-    </label>
-  );
-}
 
 function errorText(e: Error) {
   if (e instanceof ApiError && e.status === 402) {

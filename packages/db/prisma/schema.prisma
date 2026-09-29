@@ -122,6 +122,10 @@ model Job {
   outputTokens  Int            @default(0)
   /// output of the automatic checks; admin only, never sent to the browser
   warnings      Json           @default("[]")
+  /// provider model id actually used (the worker's LLM_MODEL today)
+  model         String?
+  /// wall-clock processing time of the attempt that finished the job
+  durationMs    Int?
   resultMdKey   String?
   resultDocxKey String?
   /// user-safe message only
@@ -129,9 +133,35 @@ model Job {
   createdAt     DateTime       @default(now())
   finishedAt    DateTime?
   ledger        CreditLedger[]
+  llmCalls      LlmCall[]
 
   @@index([status, kind, createdAt])
   @@index([userId, createdAt])
+  @@index([userId, kind, createdAt])
+}
+
+enum LlmPhase {
+  draft
+  verify
+}
+
+/// One row per model call, written right after the call (failed attempts included). Internal only.
+model LlmCall {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId        String   @db.Uuid
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  attempt      Int
+  chapter      Int
+  phase        LlmPhase
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  durationMs   Int
+  ok           Boolean
+  createdAt    DateTime @default(now())
+
+  @@index([jobId])
+  @@index([model, createdAt])
 }
 
 /// Append-only. Balance = SUM(amount). One row per (jobId, type) keeps charge/refund idempotent.

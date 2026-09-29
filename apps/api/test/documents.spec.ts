@@ -74,8 +74,8 @@ describe('documents', () => {
     const res = await create(alice.cookie, { filename: 'a.pdf', sizeBytes: 10 }).expect(201);
     await http().get(`/api/documents/${res.body.document.id}`).set('Cookie', bob.cookie).expect(404);
     await confirm(bob.cookie, res.body.document.id).expect(404);
-    expect((await http().get('/api/documents').set('Cookie', bob.cookie).expect(200)).body).toEqual([]);
-    expect((await http().get('/api/documents').set('Cookie', alice.cookie).expect(200)).body).toHaveLength(1);
+    expect((await http().get('/api/documents').set('Cookie', bob.cookie).expect(200)).body.items).toEqual([]);
+    expect((await http().get('/api/documents').set('Cookie', alice.cookie).expect(200)).body.items).toHaveLength(1);
   });
 
   it('limits uploads to 30 per hour', async () => {

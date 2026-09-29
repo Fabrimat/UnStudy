@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { User } from '@summarize/db';
+import { Prisma, User } from '@summarize/db';
 import { creditsFor } from '../credits/credits';
 import { LedgerService } from '../credits/ledger.service';
+import { page } from '../pagination';
 import { PrismaService } from '../prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { toJobDto } from './job.dto';
-import { CreateJobDto } from './jobs.dto';
+import { CreateJobDto, ListJobsDto } from './jobs.dto';
 import { MAX_ACTIVE_SUMMARIES } from './options';
 
 @Injectable()
@@ -42,6 +43,39 @@ export class JobsService {
 
   async get(user: User, id: string) {
     return toJobDto(await this.findOwned(user, id));
+  }
+
+  async list(user: User, q: ListJobsDto) {
+    const where: Prisma.JobWhereInput = { userId: user.id, kind: 'summarize' };
+    if (q.active) where.status = { in: ['queued', 'running'] };
+    else if (q.status) where.status = q.status;
+    if (q.method) where.options = { path: ['preset'], equals: q.method };
+    if (q.documentId) where.documentId = q.documentId;
+    const res = await page(
+      this.prisma,
+      q,
+      (p) =>
+        this.prisma.job.findMany({
+          where, ...p, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          include: { document: { select: { id: true, filename: true } } },
+        }),
+      this.prisma.job.count({ where }),
+    );
+    return { ...res, items: res.items.map((j) => ({ ...toJobDto(j), document: j.document })) };
+  }
+
+  async content(user: User, id: string) {
+    const job = await this.findOwned(user, id);
+    if (job.status !== 'done' || !job.resultMdKey) throw new NotFoundException('Summary not ready');
+    return (await this.storage.get(job.resultMdKey)).toString('utf-8');
+  }
+
+  async remove(user: User, id: string) {
+    const job = await this.findOwned(user, id);
+    if (job.status !== 'done' && job.status !== 'failed') throw new ConflictException('Summary is still in progress');
+    await this.storage.delete([job.resultMdKey, job.resultDocxKey].filter((k): k is string => !!k));
+    await this.prisma.job.delete({ where: { id } });
+    this.logger.log(`Job deleted: user ${user.id}, job ${id}`);
   }
 
   async downloadUrl(user: User, id: string, format: string) {

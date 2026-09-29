@@ -117,7 +117,7 @@ def test_finishing_twice_charges_once(conn, storage, settings):
     user, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3)
     claimed = db.claim(conn, "summarize")
     for _ in range(2):
-        db.finish_summary(conn, claimed, md_key="a.md", docx_key="a.docx", warnings=[], input_tokens=1, output_tokens=1)
+        db.finish_summary(conn, claimed, md_key="a.md", docx_key="a.docx", warnings=[], model="fake", duration_ms=1)
     charges = conn.execute("""SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s AND type = 'charge'""", (job_id,)).fetchone()
     assert charges["n"] == 1
 
@@ -192,9 +192,60 @@ def test_fencing_blocks_writes_from_a_superseded_claim(conn, storage, settings):
     row = job(conn, job_id)
     assert row["progress"] != 42 and row["phase"] != "stale write"
 
-    db.finish_summary(conn, old, md_key="old.md", docx_key="old.docx", warnings=[], input_tokens=1, output_tokens=1)
+    db.finish_summary(conn, old, md_key="old.md", docx_key="old.docx", warnings=[], model="fake", duration_ms=1)
     row = job(conn, job_id)
     assert row["status"] == "running" and row["resultMdKey"] is None
     charges = conn.execute("""SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s AND type = 'charge'""",
                            (job_id,)).fetchone()
     assert charges["n"] == 0
+
+
+def calls(conn, job_id):
+    return conn.execute('SELECT * FROM "LlmCall" WHERE "jobId" = %s ORDER BY "createdAt"', (job_id,)).fetchall()
+
+
+def test_summary_records_a_row_per_call_and_sums_them(conn, storage, settings):
+    _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3)
+    run_one(conn, storage, settings, "summarize")
+    rows, row = calls(conn, job_id), job(conn, job_id)
+    assert sorted((r["chapter"], r["phase"]) for r in rows) == [(0, "draft"), (0, "verify"), (1, "draft"), (1, "verify")]
+    assert all(r["ok"] and r["attempt"] == 1 and r["model"] == "fake" for r in rows)
+    assert row["inputTokens"] == sum(r["inputTokens"] for r in rows) == 400
+    assert row["outputTokens"] == sum(r["outputTokens"] for r in rows) == 200
+    assert row["model"] == "fake" and row["durationMs"] is not None
+
+
+def test_broken_llm_records_failed_calls_and_totals(conn, storage, settings, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3, attempts=1)
+    run_one(conn, storage, settings, "summarize", BrokenClient())  # attempts=2: final failure, refunded
+    rows, row = calls(conn, job_id), job(conn, job_id)
+    assert [(r["phase"], r["chapter"], r["ok"], r["attempt"]) for r in rows] == [("draft", 0, False, 2)]
+    assert (row["status"], row["inputTokens"], row["outputTokens"], row["model"]) == ("failed", 0, 0, "fake")
+
+
+def test_failure_totals_include_earlier_attempts(conn, storage, settings, monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3)
+
+    class DiesAfterOneCall(FakeClient):
+        def create(self, **kw):
+            if self.calls:
+                raise RuntimeError("LLM down")
+            return super().create(**kw)
+
+    run_one(conn, storage, settings, "summarize", DiesAfterOneCall())
+    assert job(conn, job_id)["status"] == "queued"
+    run_one(conn, storage, settings, "summarize", BrokenClient())
+    rows, row = calls(conn, job_id), job(conn, job_id)
+    assert [(r["attempt"], r["ok"]) for r in rows] == [(1, True), (1, False), (2, False)]
+    assert (row["status"], row["inputTokens"], row["outputTokens"]) == ("failed", 100, 50)
+
+
+def test_a_failing_call_recorder_does_not_fail_the_job(conn, storage, settings, monkeypatch):
+    def boom(*_):
+        raise RuntimeError("db write failed")
+    monkeypatch.setattr(db, "record_call", boom)
+    _, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3)
+    run_one(conn, storage, settings, "summarize")
+    assert job(conn, job_id)["status"] == "done"

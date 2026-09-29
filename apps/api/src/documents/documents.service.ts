@@ -1,11 +1,12 @@
 import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Document, Job, User } from '@summarize/db';
+import { Document, Job, Prisma, User } from '@summarize/db';
 import { randomUUID } from 'node:crypto';
 import { creditsFor } from '../credits/credits';
 import { toJobDto } from '../jobs/job.dto';
 import { PrismaService } from '../prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { MAX_UPLOAD_BYTES } from './documents.dto';
+import { page } from '../pagination';
+import { ListDocumentsDto, MAX_UPLOAD_BYTES } from './documents.dto';
 
 const MAX_UPLOADS_PER_HOUR = 30;
 const withSummaries = {
@@ -77,13 +78,48 @@ export class DocumentsService {
     return toDocDto({ ...result.doc, _count: { jobs: 1 } }); // the analyze job was just created above
   }
 
-  async list(user: User) {
-    const docs = await this.prisma.document.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: 'desc' },
-      include: withSummaries,
-    });
-    return docs.map(toDocDto);
+  async list(user: User, q: ListDocumentsDto) {
+    const where: Prisma.DocumentWhereInput = { userId: user.id };
+    if (q.q) where.filename = { contains: q.q, mode: 'insensitive' };
+    if (q.status === 'analyzing') where.status = 'uploaded';
+    else if (q.status === 'ready') where.status = 'analyzed';
+    else if (q.status === 'rejected') where.status = 'rejected';
+    else if (q.status === 'summarized') where.jobs = { some: { kind: 'summarize', status: 'done' } };
+    const res = await page(
+      this.prisma,
+      q,
+      (p) =>
+        this.prisma.document.findMany({
+          where, ...p, include: withSummaries,
+          orderBy: [{ [q.sort]: q.order }, { id: 'asc' }],
+        }),
+      this.prisma.document.count({ where }),
+    );
+    return { ...res, items: res.items.map(toDocDto) };
+  }
+
+  async rename(user: User, id: string, filename: string) {
+    await this.findOwned(user, id);
+    const doc = await this.prisma.document.update({ where: { id }, data: { filename }, include: withSummaries });
+    this.logger.log(`Document renamed: user ${user.id}, doc ${id}`);
+    return toDocDto(doc);
+  }
+
+  async remove(user: User, id: string) {
+    await this.prisma.$transaction(async (tx) => {
+      // Same user lock as JobsService.create, so no job can start while the document is being deleted.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
+      const doc = await tx.document.findFirst({ where: { id, userId: user.id }, include: { jobs: true } });
+      if (!doc) throw new NotFoundException('Document not found');
+      if (doc.jobs.some((j) => j.status === 'queued' || j.status === 'running')) {
+        throw new ConflictException('Document has jobs in progress');
+      }
+      const keys = [doc.s3Key, ...doc.jobs.flatMap((j) => [j.resultMdKey, j.resultDocxKey])].filter((k): k is string => !!k);
+      // S3 first: if it fails the transaction rolls back and the DB stays intact.
+      await this.storage.delete(keys);
+      await tx.document.delete({ where: { id } });
+    }, { timeout: 15_000 }); // the S3 round trip runs inside the transaction; the 5 s default is tight
+    this.logger.log(`Document deleted: user ${user.id}, doc ${id}`);
   }
 
   async get(user: User, id: string) {
