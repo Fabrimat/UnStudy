@@ -113,6 +113,7 @@ An admin sees the Lab in the app: upload your own document, pick several model l
 | `STRIPE_SECRET_KEY` | ✓ | | optional; leave empty to disable payments (see Stripe payments) |
 | `STRIPE_WEBHOOK_SECRET` | ✓ | | `whsec_...`, required when `STRIPE_SECRET_KEY` is set |
 | `STRIPE_PACKS` | ✓ | | JSON `[{"id":"small","credits":50,"priceId":"price_..."}]`, required when `STRIPE_SECRET_KEY` is set; price and currency come from Stripe |
+| `BILLING_ALLOWLIST` | ✓ | | optional comma-separated emails; when set only these accounts can buy credits (staging), unset = everyone (live) |
 | `STRIPE_AUTOMATIC_TAX` | ✓ | | `true` only with Stripe Tax registered (default `false`, otherwise checkout fails) |
 
 `NODE_ENV=production` is already set in the API image; it turns on `Secure` cookies. Database migrations run automatically before each API deploy (the pre-deploy command).
@@ -124,6 +125,8 @@ Credits are bought through Stripe Checkout and granted only by the webhook.
 1. In Stripe create one Price (one-time) per credit pack, then set `STRIPE_PACKS` with your own credit amount per price.
 2. Register a webhook endpoint `https://<api>/api/billing/webhook` with events `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `charge.refunded`; copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
 3. Set `STRIPE_SECRET_KEY`. Without it the app runs with payments off.
+
+Recommended rollout: first set `BILLING_ALLOWLIST` to your own email(s) and test with your keys (other users see no buy section, and checkout answers 403; verified webhooks always credit). When happy, unset it to go live. The startup log shows `billing=off|staging (N accounts)|live`.
 
 Refunds revoke the matching credits (the balance can go negative until new credits are bought).
 

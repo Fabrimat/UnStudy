@@ -152,13 +152,16 @@ export function parsePacks(raw: string | undefined): Pack[] {
 }
 
 // Billing is optional: no STRIPE_SECRET_KEY -> null. With a key, webhook secret and packs are mandatory (fail fast).
+// BILLING_ALLOWLIST (comma-separated emails) = staging: only those accounts can buy. Unset/blank -> null = live.
 export function parseStripe(env: NodeJS.ProcessEnv) {
   if (!env.STRIPE_SECRET_KEY) return null;
+  const emails = (env.BILLING_ALLOWLIST ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
   return {
     secretKey: env.STRIPE_SECRET_KEY,
     webhookSecret: need('STRIPE_WEBHOOK_SECRET'),
     packs: parsePacks(env.STRIPE_PACKS),
     automaticTax: env.STRIPE_AUTOMATIC_TAX === 'true',
+    allowlist: emails.length ? new Set(emails) : (null as Set<string> | null),
   };
 }
 

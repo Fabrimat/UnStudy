@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import Stripe from 'stripe';
 import request from 'supertest';
-import { config, parsePacks } from '../src/config';
+import { config, parsePacks, parseStripe } from '../src/config';
 import { LedgerService } from '../src/credits/ledger.service';
 import { STRIPE_CLIENT } from '../src/billing/billing.service';
 import { PrismaService } from '../src/prisma.service';
@@ -174,6 +174,65 @@ describe('billing on', () => {
       .set('Cookie', cookie)
       .send({ documentId: doc.id, language: 'auto', lengthPercent: 20, method: 'studio' })
       .expect(402);
+  });
+});
+
+describe('billing staging', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let stripe: ReturnType<typeof fake>;
+  beforeAll(async () => {
+    (config as any).stripe = { secretKey: 'sk_test', webhookSecret: SECRET, packs: PACKS, automaticTax: false, allowlist: new Set(['vip@x.com']) };
+    stripe = fake();
+    app = await createApp((b) => b.overrideProvider(STRIPE_CLIENT).useValue(stripe));
+    prisma = app.get(PrismaService);
+  });
+  afterAll(() => app.close());
+  beforeEach(() => resetDb(prisma));
+  const http = () => request(app.getHttpServer());
+
+  it('lets a listed account (case-insensitive) see packs and check out', async () => {
+    const { cookie } = await loginAs(app, 'VIP@x.com');
+    expect((await http().get('/api/billing/packs').set('Cookie', cookie).expect(200)).body.enabled).toBe(true);
+    const res = await http().post('/api/billing/checkout').set('Origin', ORIGIN).set('Cookie', cookie).send({ packId: 'small' }).expect(200);
+    expect(res.body.url).toBe('https://checkout.stripe.test/s1');
+  });
+
+  it('hides packs and refuses checkout for an unlisted account, without calling Stripe', async () => {
+    const { cookie } = await loginAs(app, 'other@x.com');
+    stripe.checkout.sessions.create.mockClear();
+    expect((await http().get('/api/billing/packs').set('Cookie', cookie).expect(200)).body).toEqual({ enabled: false, packs: [] });
+    await http().post('/api/billing/checkout').set('Origin', ORIGIN).set('Cookie', cookie).send({ packId: 'small' }).expect(403);
+    expect(stripe.checkout.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it('still credits an unlisted account from a verified webhook', async () => {
+    const { user } = await loginAs(app, 'other@x.com');
+    const payload = JSON.stringify({
+      id: 'evt_s',
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_s', payment_status: 'paid', payment_intent: 'pi_s', metadata: { userId: user.id, packId: 'small', credits: '50' } } },
+    });
+    await http()
+      .post('/api/billing/webhook')
+      .set('Content-Type', 'application/json')
+      .set('Stripe-Signature', Stripe.webhooks.generateTestHeaderString({ payload, secret: SECRET }))
+      .send(payload)
+      .expect(200);
+    expect(await app.get(LedgerService).balance(user.id)).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe('parseStripe allowlist', () => {
+  beforeAll(() => {
+    process.env.STRIPE_WEBHOOK_SECRET = 'wh'; // config need() reads process.env
+  });
+  const env = (a?: string) => ({ STRIPE_SECRET_KEY: 'sk', STRIPE_WEBHOOK_SECRET: 'wh', STRIPE_PACKS: JSON.stringify(PACKS), BILLING_ALLOWLIST: a }) as NodeJS.ProcessEnv;
+  it('trims, lowercases and drops empty entries', () => {
+    expect(parseStripe(env(' A@x.com, ,b@X.com,, '))!.allowlist).toEqual(new Set(['a@x.com', 'b@x.com']));
+  });
+  it('is null when unset or blank (live mode)', () => {
+    for (const v of [undefined, '', ' , ']) expect(parseStripe(env(v))!.allowlist).toBeNull();
   });
 });
 

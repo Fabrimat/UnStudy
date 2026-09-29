@@ -11,8 +11,10 @@ async function bootstrap() {
   setupApp(app);
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
+  const al = config.stripe?.allowlist;
+  const billing = !config.stripe ? 'off' : al ? `staging (${al.size} accounts)` : 'live';
   new Logger('Bootstrap').log(
-    `Listening on ${port}, NODE_ENV=${process.env.NODE_ENV ?? 'development'}, mail=${config.resendApiKey ? 'resend' : 'smtp'}, LOG_LEVEL=${config.logLevel}`,
+    `Listening on ${port}, NODE_ENV=${process.env.NODE_ENV ?? 'development'}, mail=${config.resendApiKey ? 'resend' : 'smtp'}, billing=${billing}, LOG_LEVEL=${config.logLevel}`,
   );
 }
 bootstrap();

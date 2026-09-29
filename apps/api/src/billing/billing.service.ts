@@ -1,4 +1,4 @@
-import { BadRequestException, HttpException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma, User } from '@summarize/db';
 import Stripe from 'stripe';
 import { config } from '../config';
@@ -20,10 +20,15 @@ export class BillingService {
     return !!config.stripe && !!this.stripe;
   }
 
-  async packs() {
+  // Staging mode: only allowlisted emails may buy. Webhook is deliberately not gated.
+  private allowed(user: User) {
+    return !config.stripe?.allowlist || config.stripe.allowlist.has(user.email.toLowerCase());
+  }
+
+  async packs(user: User) {
     const cfg = config.stripe;
     const stripe = this.stripe;
-    if (!cfg || !stripe) return { enabled: false, packs: [] };
+    if (!cfg || !stripe || !this.allowed(user)) return { enabled: false, packs: [] };
     const packs = await Promise.all(
       cfg.packs.map(async (p) => {
         let hit = this.prices.get(p.id);
@@ -42,6 +47,7 @@ export class BillingService {
   async checkout(user: User, packId: string) {
     const cfg = config.stripe;
     if (!cfg || !this.stripe) throw new ServiceUnavailableException('Billing is disabled');
+    if (!this.allowed(user)) throw new ForbiddenException('Billing is not available for this account yet');
     const pack = cfg.packs.find((p) => p.id === packId);
     if (!pack) throw new NotFoundException('Unknown pack');
     const metadata = { userId: user.id, packId: pack.id, credits: String(pack.credits) };

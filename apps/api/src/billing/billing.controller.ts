@@ -12,8 +12,8 @@ export class BillingController {
 
   @Get('packs')
   @UseGuards(SessionGuard)
-  packs() {
-    return this.billing.packs();
+  packs(@CurrentUser() user: User) {
+    return this.billing.packs(user);
   }
 
   @Post('checkout')
