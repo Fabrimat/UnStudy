@@ -19,13 +19,18 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
   - ricerca e filtri;
   - anteprima del riassunto.
 - **Organizzazione:** una spec unica con tre rilasci, ognuno con il proprio piano.
+- **Aggiunte dopo la prima revisione:**
+  - paginazione lato server;
+  - lunghezza del riassunto più flessibile;
+  - registrazione per ogni job dei crediti e dei token IA effettivamente usati, per le statistiche future;
+  - scelta del modello IA tra alcuni pre-selezionati dalla piattaforma.
 
 **Fuori scope:**
 - cartelle e tag;
 - condivisione dei metodi tra utenti;
 - modifica manuale della divisione in capitoli;
 - eliminazione dell'account (resta nel rilascio 3 del nucleo);
-- paginazione lato server (vedi §2.1).
+- esporre i token all'utente: restano dati interni, come oggi per `toJobDto`.
 
 ## 2. Rilascio A — Browser e dashboard
 
@@ -33,15 +38,22 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
 
 | Endpoint | Comportamento |
 |---|---|
-| `GET /documents` | Invariato: tutti i documenti dell'utente, con i job di riassunto. Ricerca, filtri e ordinamento si fanno nel browser. `ponytail:` va bene fino a qualche centinaio di documenti per utente; oltre servono `?q=&status=&cursor=` lato server. |
+| `GET /documents` | Paginato lato server (vedi sotto). Filtri: `q` (nome, `contains` case-insensitive), `status` (`analyzing` \| `ready` \| `rejected` \| `summarized`). Ordinamento `sort` con valori `createdAt` o `filename` e direzione `order` con valori `asc` o `desc`. Ogni documento porta i suoi job di riassunto. |
 | `PATCH /documents/:id` | Body `{ filename }`: da 1 a 200 caratteri, una sola riga. Cambia solo il nome visualizzato, non la chiave S3. Il nome del file scaricato ne deriva già. |
 | `DELETE /documents/:id` | Risponde 409 se il documento ha job `queued` o `running`. Altrimenti, nell'ordine: prende il lock `FOR UPDATE` sulla riga `User`, come fa `JobsService.create`, così nessun job può nascere durante l'eliminazione; cancella da S3 il PDF e i risultati di tutti i job; cancella `Document`, e i `Job` a cascata. Le righe `CreditLedger` restano, perché `jobId` è `SetNull`. Risponde 204. |
-| `GET /jobs` | Tutti i job `summarize` dell'utente, dal più recente, con `document: { id, filename }`. Usa `toJobDto` più il campo `document`. |
+| `GET /jobs` | Paginato. Restituisce i job `summarize` dell'utente con `document: { id, filename }`, usando `toJobDto` più il campo `document`. Filtri: `status`, `method`, `documentId`, `active=true` (solo `queued` e `running`, per la dashboard). Ordinamento per `createdAt desc`. |
 | `DELETE /jobs/:id` | Risponde 409 se il job non è `done` né `failed`. Altrimenti cancella da S3 `.md` e `.docx` e poi la riga `Job`. Risponde 204. |
 | `GET /jobs/:id/content` | Il Markdown del riassunto, come `text/markdown`, letto da S3 lato server così non serve CORS. Risponde 404 se il job non è pronto. |
-| `GET /me/ledger` | Gli ultimi 100 movimenti: `{ type, amount, createdAt, jobId, filename? }`. |
+| `GET /me/ledger` | Paginato, dal più recente: `{ type, amount, createdAt, jobId, filename? }`. |
 | `GET /me/stats` | `{ documents, summariesDone, creditsSpent, pagesSummarized }`, calcolati con aggregate Prisma. |
 
+- **Paginazione, uguale per le tre liste:**
+  - parametri `page` (da 1) e `pageSize` (1–100, default 20);
+  - risposta `{ items, total, page, pageSize }`;
+  - query con `skip`/`take` e un `count` con lo stesso `where`;
+  - validazione con DTO `class-validator` (`@Type(() => Number)`), quindi 400 sui valori non validi;
+  - `ponytail:` offset e non cursore, perché serve anche l'ordinamento per nome e i volumi per utente sono piccoli. Se una lista supera le decine di migliaia di righe si passa a keyset su `(createdAt, id)`;
+  - indice aggiunto `Job(userId, kind, createdAt)`.
 - **Ordine delle cancellazioni:** prima S3, poi il DB. Se S3 fallisce la richiesta risponde 5xx e il DB resta intatto, quindi si può ritentare. Se lo storage non trova un oggetto, conta come cancellato.
 - `StorageService` riceve i metodi `get(key)` e `delete(keys[])`, basati su `DeleteObjects`.
 - **Isolamento:** ogni endpoint risponde 404 su risorse di altri utenti, come oggi con `findOwned`.
@@ -70,7 +82,22 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
 - **Crediti (`/credits`):** tabella dei movimenti del ledger.
 - **Header:** navigazione Dashboard · Documenti · Riassunti · Crediti.
 
-### 2.3 Test
+### 2.3 Consumi reali per job (migrazione)
+
+Scopo: statistiche future su costi e margini. Sono dati interni e non vanno mai al browser.
+
+- **`LlmCall`**, nuovo modello, una riga per ogni chiamata al modello:
+  - campi: `id`, `jobId` (cascade), `attempt`, `chapter` (indice), `phase` (`draft` | `verify`), `model`, `inputTokens`, `outputTokens`, `durationMs`, `ok` (bool), `createdAt`;
+  - indici su `jobId` e su `(model, createdAt)`.
+- **Scrittura:** il worker scrive la riga subito dopo ogni chiamata, riuscita o fallita, con i token che l'API ha riportato. Così i token dei tentativi falliti e dei job rimborsati non si perdono più, mentre oggi `Usage` si salva solo a job riuscito.
+- **Totali sul job:**
+  - `Job.inputTokens` e `Job.outputTokens` diventano la somma di tutti i tentativi;
+  - il nuovo `Job.model` registra il modello usato;
+  - il nuovo `Job.durationMs` registra la durata dell'elaborazione.
+- **Crediti effettivi:** nessuna colonna nuova, perché il ledger li registra già in append. Il valore è `Job.credits` meno l'eventuale `refund` dello stesso job. `/me/stats` ed eventuali query admin lo ricavano così.
+- **Interruzioni:** la scrittura di `LlmCall` è fuori dalla transazione di fine job. Se il worker muore a metà, le righe già scritte restano, ed è quello che vogliamo.
+
+### 2.4 Test
 
 - API (Jest):
   - rinomina con valori validi e non validi;
@@ -78,7 +105,9 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
   - eliminazione riuscita: gli oggetti S3 spariscono e il ledger resta;
   - 404 cross-user su tutti i nuovi endpoint;
   - `/me/stats` con dati noti;
-  - `content` con 404 se il job non è pronto.
+  - `content` con 404 se il job non è pronto;
+  - paginazione: `total`, `page` oltre la fine che restituisce `items` vuoto, 400 su `pageSize` 0 o 101, filtri e ordinamento per nome.
+- Worker: una riga `LlmCall` per ogni chiamata, anche quando il job fallisce, e totali del job uguali alla somma delle righe.
 - Web: build pulita.
 
 ## 3. Rilascio B — Metodi personalizzati e preferenze
@@ -89,7 +118,7 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
   - campi: `id`, `userId` (cascade), `name` (1–80), `instructions` (1–4000 caratteri), `createdAt`, `updatedAt`;
   - indice su `userId`;
   - al massimo 20 metodi per utente.
-- **`User.preferences`**: `Json @default("{}")`, con forma `{ language?, fraction?, method?, extras? }`.
+- **`User.preferences`**: `Json @default("{}")`, con forma `{ language?, lengthPercent?, method?, model?, extras? }`. `lengthPercent`, `model` ed `extras` diventano attivi con il rilascio C.
 
 ### 3.2 Job
 
@@ -142,17 +171,53 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
 - Nessun endpoint nuovo: è un nuovo `POST /jobs`.
 - Il bottone è disabilitato se il PDF è già stato cancellato dalla retention (`fileDeletedAt`).
 
-### 4.4 Test
+### 4.4 Lunghezza flessibile
 
-- API: crediti con un sottoinsieme di capitoli; indici fuori range o duplicati danno 400; extra non validi danno 400.
-- Worker: filtro dei capitoli; mismatch del numero di capitoli dà `FileChanged`; il blocco degli extra è presente nelle istruzioni.
+- `fraction` (3 | 5 | 10) viene sostituito da `lengthPercent`: un intero da 5 a 50.
+- **Web:** slider con i valori rapidi 1/3, 1/5 e 1/10 e l'anteprima "≈ N parole", calcolata sui capitoli scelti.
+- **Worker:**
+  - il prompt dice "about N% of the original (≈ W words)";
+  - `{fraction}` nei preset diventa `{length}`;
+  - `run_checks` usa il rapporto al posto della frazione;
+  - `FRACTION_NAMES` sparisce.
+- **Compatibilità:** i job esistenti con `fraction` valgono `round(100 / fraction)`. Il worker accetta entrambe le forme, e l'API scrive solo `lengthPercent`.
+- **Crediti:** invariati, perché il prezzo è per parola in input. `ponytail:` un riassunto al 50% costa più token in output; si rivede con i dati di `LlmCall`.
+
+### 4.5 Scelta del modello
+
+- **Catalogo:**
+  - lo definisce la piattaforma nella env var `LLM_MODELS`, condivisa tra api e worker, con un JSON: `[{ "id": "fast", "label": "Veloce", "model": "<provider model id>", "multiplier": 1 }, …]`;
+  - il primo elemento è il default;
+  - un JSON non valido o vuoto blocca l'avvio (fail fast, come `LOG_LEVEL`);
+  - tutti i modelli passano dallo stesso endpoint OpenAI-compatibile (`LLM_BASE_URL`). `ponytail:` più provider si aggiungono con `baseUrl` per voce quando servono.
+- **API:**
+  - `GET /models` restituisce `{ id, label, multiplier }`, senza il model id del provider;
+  - `CreateJobDto.model?` accetta un `id` del catalogo;
+  - i crediti diventano `ceil(creditsFor(parole scelte) × multiplier)`;
+  - il job fa lo snapshot di `modelId` e `model` in `Job.options`.
+- **Worker:** usa `options.model` solo se compare nel proprio catalogo. Altrimenti il job fallisce senza retry e viene rimborsato: un'opzione manomessa non deve mai poter chiamare un modello arbitrario. `LLM_MODEL` resta il fallback per i job vecchi.
+- **Web:** selettore "Modello" in `DocumentPage` e in `/settings` (preferenza `model`), con il moltiplicatore mostrato nel costo.
+
+### 4.6 Test
+
+- API:
+  - crediti con un sottoinsieme di capitoli e con il moltiplicatore del modello;
+  - indici fuori range o duplicati danno 400;
+  - extra, `lengthPercent` fuori da 5–50 e `model` sconosciuto danno 400;
+  - `LLM_MODELS` non valido blocca l'avvio.
+- Worker:
+  - filtro dei capitoli;
+  - mismatch del numero di capitoli dà `FileChanged`;
+  - il blocco degli extra è presente nelle istruzioni;
+  - `lengthPercent` e il vecchio `fraction`;
+  - un modello fuori catalogo dà un fallimento rimborsato.
 
 ## 5. Rischi e sign-off
 
 Ogni rilascio passa il risk test di ensemble, quindi serve un SUPERVISE di Fable prima del merge:
 
-- **A:** cancellazioni irreversibili su S3 e sul DB, e race con la creazione dei job.
+- **A:** cancellazioni irreversibili su S3 e sul DB, race con la creazione dei job, e migrazione per `LlmCall`.
 - **B:** migrazione e testo dell'utente dentro il prompt.
-- **C:** calcolo dei crediti.
+- **C:** calcolo dei crediti (capitoli e moltiplicatore) e scelta del modello attraverso un trust boundary.
 
 Le migrazioni sono solo additive: nessun `DROP` e nessun `migrate reset`.
