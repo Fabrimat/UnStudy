@@ -29,7 +29,7 @@ Dopo il nucleo, dare all'utente il controllo su ciò che ha caricato e su come v
 - cartelle e tag;
 - condivisione dei metodi tra utenti;
 - modifica manuale della divisione in capitoli;
-- eliminazione dell'account (resta nel rilascio 3 del nucleo);
+- eliminazione dell'account (resta nel rilascio 4 del nucleo, Lancio);
 - esporre i token all'utente: restano dati interni, come oggi per `toJobDto`.
 
 ## 2. Rilascio A — Browser e dashboard

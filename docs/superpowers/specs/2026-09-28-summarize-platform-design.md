@@ -10,7 +10,7 @@ Trasformare `riassumi_libro.py` in un **SaaS pubblico**: un utente si registra, 
 
 **Decisioni prese dall'utente:** SaaS pubblico · riassunti configurabili (lingua, lunghezza, preset) · crediti prepagati · LLM dietro config, default Claude in produzione · PaaS gestito in UE · Stripe · login con magic link + Google + Apple, estendibile · stack NestJS + React in monorepo · pipeline che resta in Python.
 
-**Fuori scope MVP:** abbonamenti, Mollie, istruzioni libere dell'utente, modifica manuale della divisione in capitoli, formati diversi dal PDF, pannello admin (si usano query SQL e dashboard Stripe), condivisione dei riassunti.
+**Fuori scope MVP:** abbonamenti, Mollie, istruzioni libere dell'utente, modifica manuale della divisione in capitoli, formati diversi dal PDF, pannello admin (fino al rilascio 3 si usano query SQL e la dashboard Stripe), condivisione dei riassunti.
 
 ## 2. Architettura
 
@@ -99,7 +99,7 @@ Si parte da `riassumi_libro.py` e lo si divide in moduli; la logica resta invari
 - Tutti i dati in UE (DB, bucket, region del PaaS).
 - **Retention:** i PDF caricati vengono cancellati 30 giorni dopo l'upload con una lifecycle rule sul prefisso `users/*/documents/`; `Document.fileDeletedAt` viene impostato alla prima lettura che trova il file mancante. I riassunti restano finché l'utente non li cancella. Il testo estratto non viene mai salvato.
 - **Eliminazione dell'account:** cancella gli oggetti S3 dell'utente, `Document`, `Job`, `Session` e `AuthAccount`; anonimizza `User` (email sostituita da un hash, `deletedAt` valorizzato). `CreditLedger` e `StripeEvent` restano per gli obblighi fiscali.
-- **Pagine richieste prima del lancio:** privacy policy con l'elenco dei sub-processor (LLM provider, Stripe, hosting, storage, email) e ToS. I ToS includono la dichiarazione dell'utente di avere diritto a usare il materiale caricato per studio personale; i riassunti sono privati e non condivisibili. DPA con ogni sub-processor. **Parere legale sul copyright prima del lancio pubblico.**
+- **Pagine richieste prima del lancio:** privacy policy con l'elenco dei sub-processor (LLM provider, Stripe, hosting, storage, email) e ToS, entrambe modificabili dall'admin (rilascio 3). I ToS includono la dichiarazione dell'utente di avere diritto a usare il materiale caricato per studio personale; i riassunti sono privati e non condivisibili. DPA con ogni sub-processor. **Parere legale sul copyright prima del lancio pubblico.**
 
 ## 9. Frontend (apps/web)
 
@@ -122,7 +122,7 @@ UI in inglese e italiano (i18n con `react-i18next`).
 | Saldo insufficiente | 402 con il fabbisogno; la UI propone l'acquisto |
 | Errore LLM transitorio | retry con backoff dentro la pipeline (come oggi) |
 | Worker morto a metà | heartbeat scaduto: job rimesso in coda, al massimo 2 tentativi |
-| Fallimento definitivo | `failed` e `refund` nella stessa transazione, email all'utente (rinviata al rilascio 3; nel rilascio 1 errore e rimborso si vedono nella UI) |
+| Fallimento definitivo | `failed` e `refund` nella stessa transazione, email all'utente (rinviata al rilascio 4; nel rilascio 1 errore e rimborso si vedono nella UI) |
 | Webhook duplicato | vincolo PK su `StripeEvent`, risposta 200, nessun doppio accredito |
 | Avvisi dei controlli | salvati in `Job.warnings`, riassunto consegnato comunque |
 
@@ -136,6 +136,11 @@ UI in inglese e italiano (i18n con `react-i18next`).
 
 Ogni rilascio ha il proprio piano di implementazione.
 
-1. **Nucleo:** monorepo, DB, auth (magic link e Google; Apple nel rilascio 3 se richiede il developer account), upload, analisi, job, avanzamento via SSE, download. I crediti si danno solo con `grant`.
+1. **Nucleo:** monorepo, DB, auth (magic link e Google; Apple nel rilascio 4 se richiede il developer account), upload, analisi, job, avanzamento via SSE, download. I crediti si danno solo con `grant`.
 2. **Pagamenti:** Stripe Checkout, webhook, pagina di acquisto, `revoke` sui rimborsi.
-3. **Lancio:** Apple, eliminazione dell'account, lifecycle rule, pagine legali, i18n completo, deploy di produzione in UE, taratura del prezzo per credito, email di notifica sui job falliti, `pandoc --sandbox` e limite di memoria sul rendering OCR delle pagine enormi.
+3. **Amministrazione:**
+   - **Account admin:** un ruolo sull'utente (`User.role`, assegnato da CLI come `grant`, mai dalla UI) che può vedere tutto in sola lettura: utenti, documenti, job, ledger e consumi LLM per job. Ogni accesso admin passa da una guard dedicata e viene loggato con l'id dell'admin; le azioni che cambiano dati (es. `grant` o `revoke` dalla UI) sono fuori da questo rilascio salvo decisione esplicita.
+   - **Dashboard admin:** statistiche aggregate su utenti attivi, job per stato, crediti venduti e spesi, token e costo LLM per modello, tasso di fallimento e rimborsi, per giorno/settimana.
+   - **ToS e Privacy Policy:** pagine pubbliche con testo in Markdown modificabile dall'admin, versionate; l'utente accetta la versione corrente al primo login e di nuovo quando cambia.
+   - **Template email modificabili:** magic link, job fallito e ricevuta di acquisto con oggetto e corpo modificabili dall'admin, segnaposto validati (es. `{link}`, `{name}`), anteprima e ritorno al testo predefinito.
+4. **Lancio:** Apple, eliminazione dell'account, lifecycle rule, pagine legali (contenuto definitivo, dopo il parere legale), i18n completo, deploy di produzione in UE, taratura del prezzo per credito, email di notifica sui job falliti, `pandoc --sandbox` e limite di memoria sul rendering OCR delle pagine enormi.
