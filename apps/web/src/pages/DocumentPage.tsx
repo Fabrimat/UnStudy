@@ -9,7 +9,7 @@ import {
 
 function errorText(e: Error) {
   if (e instanceof ApiError && e.status === 402) {
-    return `Not enough credits: this document needs ${e.body.needed}, you have ${e.body.balance}. Credit purchases are coming soon.`;
+    return `Not enough credits: this document needs ${e.body.needed}, you have ${e.body.balance}. Buy more on the Credits page.`;
   }
   return e.message;
 }
@@ -31,6 +31,7 @@ export default function DocumentPage() {
   const fo: Record<string, unknown> = fromJob.data && fromJob.data.documentId === id ? fromJob.data.options : {};
   // Picked values win; otherwise the job being regenerated, the saved preferences, then defaults.
   const [picked, setPicked] = useState<Picked>({});
+  const [formOpen, setFormOpen] = useState(false);
   const language = picked.language ?? (fo.language as string | undefined) ?? prefs?.language ?? 'auto';
   const lengthPercent = picked.lengthPercent ?? (fo.lengthPercent ? Number(fo.lengthPercent) : fo.fraction ? Math.round(100 / Number(fo.fraction)) : lengthOf(prefs));
   const wanted = picked.method ?? (fo.method as string | undefined) ?? prefs?.method ?? 'studio';
@@ -85,6 +86,23 @@ export default function DocumentPage() {
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">{d.filename}</h1>
       <p className="text-sm text-gray-600">{d.pages} pages · {d.words} words · {d.chapters?.length} part(s)</p>
+      {d.jobs.length > 0 && (
+        <div className="space-y-1">
+          <h2 className="font-medium">Summaries</h2>
+          <ul className="space-y-1 text-sm">
+            {d.jobs.map((j) => (
+              <li key={j.id}>
+                <Link className="underline" to={`/jobs/${j.id}`}>Summary of {new Date(j.createdAt).toLocaleString()}</Link> — {j.status}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {/* With past summaries the options stay behind a button; a first run or a regenerate opens them directly. */}
+      {!(formOpen || from || d.jobs.length === 0) ? (
+        <button onClick={() => setFormOpen(true)} className="rounded bg-black px-4 py-2 text-white">New summary</button>
+      ) : (<>
+      {d.jobs.length > 0 && <h2 className="font-medium">New summary</h2>}
       <div className="space-y-1 text-sm">
         <p>
           Parts to summarize:{' '}
@@ -127,15 +145,7 @@ export default function DocumentPage() {
         Start summary
       </button>
       {start.error && <p className="text-red-600">{errorText(start.error)}</p>}
-      {d.jobs.length > 0 && (
-        <ul className="space-y-1 text-sm">
-          {d.jobs.map((j) => (
-            <li key={j.id}>
-              <Link className="underline" to={`/jobs/${j.id}`}>Summary of {new Date(j.createdAt).toLocaleString()}</Link> — {j.status}
-            </li>
-          ))}
-        </ul>
-      )}
+      </>)}
     </section>
   );
 }

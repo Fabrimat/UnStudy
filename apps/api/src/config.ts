@@ -49,7 +49,44 @@ export function parseModels(raw: string | undefined, fallbackModel: string | und
   return list as ModelEntry[];
 }
 
+export type Pack = { id: string; credits: number; priceId: string };
+
+// STRIPE_PACKS: JSON [{id,credits,priceId}]. Price and currency are read from Stripe; credits stay ours.
+export function parsePacks(raw: string | undefined): Pack[] {
+  let list: unknown;
+  try {
+    list = JSON.parse(raw ?? '');
+  } catch {
+    throw new Error('STRIPE_PACKS is not valid JSON');
+  }
+  if (!Array.isArray(list) || !list.length) throw new Error('STRIPE_PACKS must be a non-empty array');
+  const seen = new Set<string>();
+  for (const e of list as Record<string, unknown>[]) {
+    const ok =
+      e && typeof e === 'object' &&
+      typeof e.id === 'string' && /^[a-z0-9-]{1,32}$/.test(e.id) &&
+      typeof e.credits === 'number' && Number.isInteger(e.credits) && e.credits >= 1 && e.credits <= 100000 &&
+      typeof e.priceId === 'string' && e.priceId.trim();
+    if (!ok) throw new Error('STRIPE_PACKS has an invalid entry');
+    if (seen.has(e.id as string)) throw new Error('STRIPE_PACKS has a duplicate id');
+    seen.add(e.id as string);
+  }
+  return list as Pack[];
+}
+
+// Billing is optional: no STRIPE_SECRET_KEY -> null. With a key, webhook secret and packs are mandatory (fail fast).
+export function parseStripe(env: NodeJS.ProcessEnv) {
+  if (!env.STRIPE_SECRET_KEY) return null;
+  return {
+    secretKey: env.STRIPE_SECRET_KEY,
+    webhookSecret: need('STRIPE_WEBHOOK_SECRET'),
+    packs: parsePacks(env.STRIPE_PACKS),
+    automaticTax: env.STRIPE_AUTOMATIC_TAX === 'true',
+  };
+}
+
 export const config = {
+  stripe: parseStripe(process.env),
   models: parseModels(process.env.LLM_MODELS, process.env.LLM_MODEL),
   webOrigin: need('WEB_ORIGIN'),
   logLevel,

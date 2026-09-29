@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { AuthModule } from './auth/auth.module';
+import { BillingModule } from './billing/billing.module';
 import { CreditsModule } from './credits/credits.module';
 import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
@@ -21,6 +22,7 @@ const webDist = join(process.cwd(), '../web/dist');
   imports: [
     PrismaModule,
     AuthModule,
+    BillingModule,
     CreditsModule,
     DocumentsModule,
     JobsModule,

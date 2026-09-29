@@ -20,9 +20,15 @@ export type Doc = {
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number };
 export type JobWithDoc = Job & { document: { id: string; filename: string } };
 export type LedgerEntry = { id: string; type: string; amount: number; createdAt: string; jobId: string | null; filename: string | null };
+export type Pack = { id: string; credits: number; amount: number; currency: string };
+export type BillingPacks = { enabled: boolean; packs: Pack[] };
 export type Stats = { documents: number; summariesDone: number; creditsSpent: number; pagesSummarized: number };
 
+export const formatPrice = (amount: number, currency: string) =>
+  new Intl.NumberFormat(undefined, { style: 'currency', currency: currency.toUpperCase() }).format(amount / 100);
+
 // Builds "?a=1&b=2", skipping empty values.
+
 export const qs = (params: Record<string, string | number | boolean | null | undefined>) => {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.set(k, String(v));
@@ -111,6 +117,8 @@ export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('
 export const useMethods = () => useQuery({ queryKey: ['methods'], queryFn: () => api<Method[]>('/methods') });
 
 export const useModels = () => useQuery({ queryKey: ['models'], queryFn: () => api<Model[]>('/models') });
+
+export const usePacks = () => useQuery({ queryKey: ['packs'], queryFn: () => api<BillingPacks>('/billing/packs') });
 
 export async function uploadFile(file: File) {
   const { document, uploadUrl } = await api<{ document: Doc; uploadUrl: string }>('/documents', {

@@ -190,8 +190,17 @@ model CreditLedger {
   jobId         String?    @db.Uuid
   job           Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
   stripeEventId String?
+  paymentIntentId String?
   createdAt     DateTime   @default(now())
 
   @@unique([jobId, type])
   @@index([userId])
+  @@index([paymentIntentId])
+}
+
+/// Processed Stripe webhook events; the PK makes redelivery idempotent.
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }

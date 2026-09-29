@@ -89,8 +89,22 @@ Any other OpenAI-compatible provider works too. Check that its terms allow use i
 | `LLM_MODEL` | | ✓ | see LLM |
 | `LLM_MODELS` | ✓ | ✓ | optional model catalogue (JSON, first = default); set it **identically on both services**, otherwise every new summary fails and is refunded |
 | `LOG_LEVEL` | ✓ | ✓ | `info` (optional; `debug`, `warn`, `error`) |
+| `STRIPE_SECRET_KEY` | ✓ | | optional; leave empty to disable payments (see Stripe payments) |
+| `STRIPE_WEBHOOK_SECRET` | ✓ | | `whsec_...`, required when `STRIPE_SECRET_KEY` is set |
+| `STRIPE_PACKS` | ✓ | | JSON `[{"id":"small","credits":50,"priceId":"price_..."}]`, required when `STRIPE_SECRET_KEY` is set; price and currency come from Stripe |
+| `STRIPE_AUTOMATIC_TAX` | ✓ | | `true` only with Stripe Tax registered (default `false`, otherwise checkout fails) |
 
 `NODE_ENV=production` is already set in the API image; it turns on `Secure` cookies. Database migrations run automatically before each API deploy (the pre-deploy command).
+
+### Stripe payments (optional)
+
+Credits are bought through Stripe Checkout and granted only by the webhook.
+
+1. In Stripe create one Price (one-time) per credit pack, then set `STRIPE_PACKS` with your own credit amount per price.
+2. Register a webhook endpoint `https://<api>/api/billing/webhook` with events `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `charge.refunded`; copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+3. Set `STRIPE_SECRET_KEY`. Without it the app runs with payments off.
+
+Refunds revoke the matching credits (the balance can go negative until new credits are bought).
 
 ### Google login (optional)
 

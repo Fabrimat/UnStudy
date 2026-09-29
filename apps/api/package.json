@@ -25,7 +25,8 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "stripe": "^22.6.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
@@ -46,8 +47,12 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "testMatch": ["<rootDir>/test/**/*.spec.ts"],
-    "setupFiles": ["<rootDir>/test/env.ts"],
+    "testMatch": [
+      "<rootDir>/test/**/*.spec.ts"
+    ],
+    "setupFiles": [
+      "<rootDir>/test/env.ts"
+    ],
     "globalSetup": "<rootDir>/test/global-setup.ts",
     "maxWorkers": 1,
     "testTimeout": 20000

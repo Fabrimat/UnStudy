@@ -9,7 +9,7 @@ export const ORIGIN = 'http://localhost:5173';
 
 export async function createApp(customize: (b: TestingModuleBuilder) => TestingModuleBuilder = (b) => b) {
   const moduleRef = await customize(Test.createTestingModule({ imports: [AppModule] })).compile();
-  const app = moduleRef.createNestApplication();
+  const app = moduleRef.createNestApplication({ rawBody: true });
   setupApp(app);
   await app.init();
   return app;
@@ -17,7 +17,7 @@ export async function createApp(customize: (b: TestingModuleBuilder) => TestingM
 
 export async function resetDb(prisma: PrismaService) {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE "CreditLedger", "Job", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
+    'TRUNCATE "CreditLedger", "StripeEvent", "Job", "Document", "Session", "AuthAccount", "MagicLinkToken", "User" CASCADE',
   );
 }
 
