@@ -4,7 +4,11 @@ import { fmt, t } from './i18n';
 export type Preferences = { language?: string; lengthPercent?: number; method?: string; model?: string; fraction?: number /* legacy */ };
 export type Model = { id: string; label: string; multiplier: number };
 export type Extra = 'glossary' | 'questions' | 'takeaways';
-export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences; role: 'user' | 'admin' };
+export type LegalKind = 'terms' | 'privacy';
+export type LegalRef = { kind: LegalKind; version: number };
+export type LegalDoc = LegalRef & { body: string; createdAt: string };
+export type AdminLegalDoc = LegalDoc & { id: string; createdBy: string; acceptances: number };
+export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences; role: 'user' | 'admin'; legal: { pending: LegalRef[] } };
 export type TokenParam = 'max_tokens' | 'max_completion_tokens';
 export type AdminProviderKey = { status: 'ok' | 'missing' | 'unknown'; source: 'LLM_KEY' | 'LLM_PROVIDERS' | 'none' | null; checkedAt: string | null };
 export type AdminProvider = { id: string; baseUrl: string; tokenParam: TokenParam; maxConcurrency: number | null; keyEnv: string; key: AdminProviderKey };
@@ -128,6 +132,13 @@ export class ApiError extends Error {
   }
 }
 
+export type EmailTemplate = {
+  key: string; placeholders: { name: string; required: boolean }[]; subject: string; body: string; isDefault: boolean;
+  updatedAt: string | null; defaultSubject: string; defaultBody: string;
+};
+
+export const LEGAL_REQUIRED = 'legal-required';
+
 export async function api<T = void>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api${path}`, {
     credentials: 'same-origin',
@@ -138,12 +149,70 @@ export async function api<T = void>(path: string, init: RequestInit = {}): Promi
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     const message = Array.isArray(body?.message) ? body.message.join(', ') : body?.message ?? res.statusText;
+    // The user must accept new legal texts first: RequireUser listens and refreshes `me`, which redirects to /accept.
+    if (res.status === 403 && body?.code === 'legal_acceptance_required') window.dispatchEvent(new Event(LEGAL_REQUIRED));
     throw new ApiError(res.status, message, body);
   }
   return body as T;
 }
 
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') });
+
+export const useLegal = (kind: LegalKind) =>
+  useQuery({ queryKey: ['legal', kind], queryFn: () => api<LegalDoc>(`/legal/${kind}`), retry: false });
+
+export function useAcceptLegal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (documents: LegalRef[]) => api('/me/legal/accept', { method: 'POST', body: JSON.stringify({ documents }) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  });
+}
+
+export function useDeleteAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (confirm: string) => api('/me', { method: 'DELETE', body: JSON.stringify({ confirm }) }),
+    onSuccess: () => qc.clear(),
+  });
+}
+
+export const useAdminLegal = (kind: LegalKind) =>
+  useQuery({ queryKey: ['admin', 'legal', kind], queryFn: () => api<AdminLegalDoc[]>(`/admin/legal/${kind}`) });
+
+export function usePublishLegal(kind: LegalKind) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => api<AdminLegalDoc>(`/admin/legal/${kind}`, { method: 'POST', body: JSON.stringify({ body }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'legal', kind] });
+      qc.invalidateQueries({ queryKey: ['legal', kind] });
+    },
+  });
+}
+
+export const useAdminEmailTemplates = () => useQuery({ queryKey: ['admin', 'email-templates'], queryFn: () => api<EmailTemplate[]>('/admin/email-templates') });
+
+const emailBody = (subject: string, body: string) => JSON.stringify({ subject, body });
+
+export function useSaveEmailTemplate(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { subject: string; body: string }) => api<EmailTemplate>(`/admin/email-templates/${key}`, { method: 'PUT', body: emailBody(v.subject, v.body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'email-templates'] }),
+  });
+}
+
+export const usePreviewEmailTemplate = (key: string) =>
+  useMutation({ mutationFn: (v: { subject: string; body: string }) => api<{ subject: string; body: string }>(`/admin/email-templates/${key}/preview`, { method: 'POST', body: emailBody(v.subject, v.body) }) });
+
+export function useResetEmailTemplate(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api(`/admin/email-templates/${key}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'email-templates'] }),
+  });
+}
 
 export const useMethods = () => useQuery({ queryKey: ['methods'], queryFn: () => api<Method[]>('/methods') });
 

@@ -36,7 +36,7 @@ You need a domain of your own: Resend only sends from verified domains, and the 
 ]
 ```
 
-5. Optional: add a lifecycle rule that deletes objects under `users/` older than 30 days, if you don't want to keep uploaded PDFs.
+5. No lifecycle rule is needed: the API itself deletes uploaded PDFs 30 days after upload (results are kept).
 
 ## 2. Resend
 

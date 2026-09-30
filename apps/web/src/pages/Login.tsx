@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FormEvent, useState } from 'react';
 import { api } from '../api';
 import { t } from '../i18n';
+import { LegalLinks } from './Legal';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -38,6 +39,7 @@ export default function Login() {
       {providers.data?.google && (
         <a href="/api/auth/google" className="block rounded border bg-white p-2 text-center">{t('login.google')}</a>
       )}
+      <p className="text-center text-xs text-gray-500"><LegalLinks /></p>
     </main>
   );
 }

@@ -5,3 +5,5 @@ export { default as AdminDocuments, AdminDocumentPage } from './Documents';
 export { default as AdminJobs, AdminJobPage } from './Jobs';
 export { default as AdminModels } from './Models';
 export { default as AdminProviders } from './Providers';
+export { default as AdminEmails } from './Emails';
+export { default as AdminLegal } from './Legal';

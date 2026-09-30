@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router';
-import { api, Me, useMe } from './api';
+import { useEffect } from 'react';
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { api, LEGAL_REQUIRED, Me, useMe } from './api';
 import { t } from './i18n';
 import AdminLab from './pages/AdminLab';
-import { AdminDocumentPage, AdminDocuments, AdminJobPage, AdminJobs, AdminLayout, AdminModels, AdminOverview, AdminProviders, AdminUserPage, AdminUsers } from './pages/admin';
+import { AdminDocumentPage, AdminDocuments, AdminEmails, AdminJobPage, AdminJobs, AdminLayout, AdminLegal, AdminModels, AdminOverview, AdminProviders, AdminUserPage, AdminUsers } from './pages/admin';
 import BenchmarkPage from './pages/BenchmarkPage';
 import Credits from './pages/Credits';
 import Dashboard from './pages/Dashboard';
@@ -11,6 +12,7 @@ import DocumentPage from './pages/DocumentPage';
 import Documents from './pages/Documents';
 import JobPage from './pages/JobPage';
 import Jobs from './pages/Jobs';
+import Accept, { LegalLinks, LegalPage } from './pages/Legal';
 import Login from './pages/Login';
 import Methods from './pages/Methods';
 import Settings from './pages/Settings';
@@ -21,7 +23,10 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/auth/verify" element={<Verify />} />
+      <Route path="/terms" element={<LegalPage kind="terms" />} />
+      <Route path="/privacy" element={<LegalPage kind="privacy" />} />
       <Route element={<RequireUser />}>
+        <Route path="/accept" element={<Accept />} />
         <Route path="/" element={<Dashboard />} />
         <Route path="/documents" element={<Documents />} />
         <Route path="/jobs" element={<Jobs />} />
@@ -41,6 +46,8 @@ export default function App() {
             <Route path="jobs/:id" element={<AdminJobPage />} />
             <Route path="models" element={<AdminModels />} />
             <Route path="providers" element={<AdminProviders />} />
+            <Route path="legal" element={<AdminLegal />} />
+            <Route path="emails" element={<AdminEmails />} />
             <Route path="lab" element={<AdminLab />} />
             <Route path="benchmarks/:id" element={<BenchmarkPage />} />
           </Route>
@@ -52,12 +59,22 @@ export default function App() {
 
 function RequireUser() {
   const me = useMe();
+  const qc = useQueryClient();
+  const location = useLocation();
+  // A 403 legal_acceptance_required from any call: refresh `me`, which then carries the pending documents.
+  useEffect(() => {
+    const refresh = () => qc.invalidateQueries({ queryKey: ['me'] });
+    window.addEventListener(LEGAL_REQUIRED, refresh);
+    return () => window.removeEventListener(LEGAL_REQUIRED, refresh);
+  }, [qc]);
   if (me.isPending) return <p className="p-8">{t('common.loading')}</p>;
   if (me.error) return <Navigate to="/login" replace />;
+  if (me.data.legal.pending.length && location.pathname !== '/accept') return <Navigate to="/accept" state={{ from: location }} replace />;
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <Header me={me.data} />
       <Outlet />
+      <footer className="border-t pt-3 text-xs text-gray-500"><LegalLinks /></footer>
     </div>
   );
 }

@@ -53,6 +53,13 @@ export class ListBenchmarksDto extends PageQueryDto {}
 // --- model catalog ---
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
+export class PublishLegalDto {
+  @Transform(trim)
+  @IsString()
+  @Length(1, 100_000)
+  body: string;
+}
+
 export class CreateModelDto {
   @Matches(/^[a-z0-9-]{1,32}$/, { message: 'id must be a-z, 0-9, dash, max 32' })
   id: string;
@@ -289,4 +296,16 @@ export class StatsQueryDto {
   @Min(1)
   @Max(365)
   days: number = 30;
+}
+
+export class EmailTemplateDto {
+  @Transform(trim)
+  @IsString()
+  @Length(1, 200)
+  @Matches(/^[^\r\n]*$/, { message: 'subject must be a single line' })
+  subject: string;
+
+  @IsString()
+  @Length(1, 20_000)
+  body: string;
 }

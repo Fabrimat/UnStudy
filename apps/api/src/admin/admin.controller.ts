@@ -1,17 +1,19 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
-import { User } from '@summarize/db';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Patch, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { LegalKind, User } from '@summarize/db';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/session.guard';
 import { AdminGuard } from './admin.guard';
-import { CreateBenchmarkDto, CreateModelDto, CreateProviderDto, ListBenchmarksDto, ModelOrderDto, RenameBenchmarkDto, UpdateModelDto, UpdateProviderDto } from './admin.dto';
+import { CreateBenchmarkDto, CreateModelDto, CreateProviderDto, EmailTemplateDto, ListBenchmarksDto, ModelOrderDto, PublishLegalDto, RenameBenchmarkDto, UpdateModelDto, UpdateProviderDto } from './admin.dto';
 import { BenchmarksService } from './benchmarks.service';
 import { ModelsAdminService } from './models.service';
 import { ProvidersAdminService } from './providers.service';
+import { EmailTemplatesService } from '../auth/email-templates.service';
+import { LegalService } from '../auth/legal.service';
 
 @Controller('admin')
 @UseGuards(AdminGuard)
 export class AdminController {
-  constructor(private benchmarks: BenchmarksService, private catalog: ModelsAdminService, private providers: ProvidersAdminService) {}
+  constructor(private benchmarks: BenchmarksService, private catalog: ModelsAdminService, private providers: ProvidersAdminService, private legal: LegalService, private emails: EmailTemplatesService) {}
 
   @Get('models')
   models() {
@@ -54,6 +56,38 @@ export class AdminController {
   @HttpCode(204)
   removeProvider(@CurrentUser() user: User, @Param('id') id: string) {
     return this.providers.remove(user, id);
+  }
+
+  @Get('legal/:kind')
+  legalHistory(@Param('kind', new ParseEnumPipe(LegalKind)) kind: LegalKind) {
+    return this.legal.history(kind);
+  }
+
+  @Post('legal/:kind')
+  publishLegal(@CurrentUser() user: User, @Param('kind', new ParseEnumPipe(LegalKind)) kind: LegalKind, @Body() dto: PublishLegalDto) {
+    return this.legal.publish(user, kind, dto.body);
+  }
+
+  @Get('email-templates')
+  listEmailTemplates() {
+    return this.emails.list();
+  }
+
+  @Put('email-templates/:key')
+  saveEmailTemplate(@CurrentUser() user: User, @Param('key') key: string, @Body() dto: EmailTemplateDto) {
+    return this.emails.save(user, key, dto.subject, dto.body);
+  }
+
+  @Post('email-templates/:key/preview')
+  @HttpCode(200)
+  previewEmailTemplate(@Param('key') key: string, @Body() dto: EmailTemplateDto) {
+    return this.emails.preview(key, dto.subject, dto.body);
+  }
+
+  @Delete('email-templates/:key')
+  @HttpCode(204)
+  resetEmailTemplate(@CurrentUser() user: User, @Param('key') key: string) {
+    return this.emails.reset(user, key);
   }
 
   @Post('benchmarks')

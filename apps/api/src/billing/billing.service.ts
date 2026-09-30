@@ -2,6 +2,9 @@ import { BadRequestException, ForbiddenException, HttpException, Inject, Injecta
 import { Prisma, User } from '@summarize/db';
 import Stripe from 'stripe';
 import { config } from '../config';
+import { EmailTemplatesService } from '../auth/email-templates.service';
+import { MailService } from '../auth/mail.service';
+import { maskEmail } from '../auth/mask-email';
 import { PrismaService } from '../prisma.service';
 
 export const STRIPE_CLIENT = 'STRIPE_CLIENT';
@@ -14,7 +17,7 @@ export class BillingService {
   // ponytail: per-process cache, one Stripe call per pack per 10 min per instance.
   private prices = new Map<string, { at: number; amount: number; currency: string }>();
 
-  constructor(@Inject(STRIPE_CLIENT) private stripe: Stripe | null, private prisma: PrismaService) {}
+  constructor(@Inject(STRIPE_CLIENT) private stripe: Stripe | null, private prisma: PrismaService, private mail: MailService, private templates: EmailTemplatesService) {}
 
   get enabled() {
     return !!config.stripe && !!this.stripe;
@@ -76,7 +79,7 @@ export class BillingService {
     }
     const t = event.type;
     if (t !== 'checkout.session.completed' && t !== 'checkout.session.async_payment_succeeded' && t !== 'charge.refunded') return;
-    await this.prisma.$transaction(async (tx) => {
+    const receipt = await this.prisma.$transaction(async (tx) => {
       // PK insert first: a redelivered event inserts nothing and the handler is skipped.
       const { count } = await tx.stripeEvent.createMany({ data: [{ id: event.id, type: t }], skipDuplicates: true });
       if (!count) return this.logger.log(`Duplicate event ${event.id}`);
@@ -85,6 +88,21 @@ export class BillingService {
       if (session.payment_status !== 'paid') return; // async method still pending: only the event is recorded
       return this.credit(tx, event.id, session);
     });
+    if (receipt) await this.sendReceipt(receipt);
+  }
+
+  // After commit, and only for a newly created purchase: replays return nothing. Never fails the webhook.
+  private async sendReceipt(r: { userId: string; credits: number; balance: number }) {
+    let email = '';
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: r.userId } });
+      if (!user) return;
+      email = user.email;
+      const { subject, body } = await this.templates.render('purchase_receipt', { credits: String(r.credits), balance: String(r.balance), email });
+      await this.mail.send(email, subject, body);
+    } catch (e) {
+      this.logger.error(`Purchase receipt not sent (${email ? maskEmail(email) : r.userId}): ${(e as Error).message}`);
+    }
   }
 
   private async lockUser(tx: Prisma.TransactionClient, userId: string) {
@@ -104,6 +122,8 @@ export class BillingService {
     if (await tx.creditLedger.findFirst({ where: { type: 'purchase', paymentIntentId } })) return;
     await tx.creditLedger.create({ data: { userId, type: 'purchase', amount, stripeEventId: eventId, paymentIntentId } });
     this.logger.log(`Purchase +${amount} credits for user ${userId} (event ${eventId})`);
+    const { _sum } = await tx.creditLedger.aggregate({ where: { userId }, _sum: { amount: true } });
+    return { userId, credits: amount, balance: _sum.amount ?? 0 };
   }
 
   private async refund(tx: Prisma.TransactionClient, eventId: string, charge: Stripe.Charge) {

@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router';
 import { t } from '../../i18n';
 
-const TABS = [['/admin', 'overview'], ['/admin/users', 'users'], ['/admin/documents', 'documents'], ['/admin/jobs', 'jobs'], ['/admin/models', 'models'], ['/admin/providers', 'providers'], ['/admin/lab', 'lab']] as const;
+const TABS = [['/admin', 'overview'], ['/admin/users', 'users'], ['/admin/documents', 'documents'], ['/admin/jobs', 'jobs'], ['/admin/models', 'models'], ['/admin/providers', 'providers'], ['/admin/legal', 'legal'], ['/admin/emails', 'emails'], ['/admin/lab', 'lab']] as const;
 
 export default function AdminLayout() {
   return (

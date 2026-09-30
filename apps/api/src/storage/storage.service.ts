@@ -1,4 +1,4 @@
-import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, PutBucketCorsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutBucketCorsCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { config } from '../config';
@@ -109,5 +109,15 @@ export class StorageService implements OnModuleInit {
       );
       if (res.Errors?.length) throw new Error(`S3 delete failed for ${res.Errors.length} object(s)`);
     }
+  }
+
+  // Deletes every object under a key prefix, one listing page (<= 1000 keys) at a time.
+  async deletePrefix(prefix: string) {
+    let token: string | undefined;
+    do {
+      const res = await this.s3.send(new ListObjectsV2Command({ Bucket: this.bucket, Prefix: prefix, ContinuationToken: token }));
+      await this.delete((res.Contents ?? []).flatMap((o) => (o.Key ? [o.Key] : [])));
+      token = res.NextContinuationToken;
+    } while (token);
   }
 }

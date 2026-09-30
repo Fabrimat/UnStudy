@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { SummaryMethod, User } from '@summarize/db';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -28,7 +28,8 @@ export class MethodsService {
   async create(user: User, dto: CreateMethodDto) {
     const m = await this.prisma.$transaction(async (tx) => {
       // Same user lock as JobsService.create, so concurrent POSTs cannot exceed the cap.
-      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
+      const [row] = await tx.$queryRaw<{ deletedAt: Date | null }[]>`SELECT "deletedAt" FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
+      if (row?.deletedAt) throw new UnauthorizedException();
       if ((await tx.summaryMethod.count({ where: { userId: user.id } })) >= MAX_METHODS) {
         throw new ConflictException(`You can have at most ${MAX_METHODS} methods`);
       }

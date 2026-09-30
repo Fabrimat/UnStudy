@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Document, Job, Prisma, User } from '@summarize/db';
 import { randomUUID } from 'node:crypto';
 import { creditsFor } from '../credits/credits';
@@ -44,7 +44,12 @@ export class DocumentsService {
     }
     const id = randomUUID();
     const s3Key = `users/${user.id}/documents/${id}.pdf`;
-    const doc = await this.prisma.document.create({ data: { id, userId: user.id, filename, sizeBytes, s3Key } });
+    // User lock + deletedAt check: account deletion must not leave an orphan document behind.
+    const doc = await this.prisma.$transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<{ deletedAt: Date | null }[]>`SELECT "deletedAt" FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
+      if (row?.deletedAt) throw new UnauthorizedException();
+      return tx.document.create({ data: { id, userId: user.id, filename, sizeBytes, s3Key } });
+    });
     this.logger.log(`Upload URL issued: doc ${id}, ${sizeBytes} bytes`);
     return { document: toDocDto(doc), uploadUrl: await this.storage.uploadUrl(s3Key, sizeBytes) };
   }

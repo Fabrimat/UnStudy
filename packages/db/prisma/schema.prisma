@@ -46,24 +46,26 @@ enum LedgerType {
 }
 
 model User {
-  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email       String          @unique
-  name        String?
-  createdAt   DateTime        @default(now())
-  deletedAt   DateTime?
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String            @unique
+  name             String?
+  createdAt        DateTime          @default(now())
+  deletedAt        DateTime?
   /// { language?, lengthPercent?, method?, model? } defaults for new jobs (legacy: fraction)
-  preferences Json            @default("{}")
+  preferences      Json              @default("{}")
   /// assigned only by the `role` CLI, never from the UI
-  role        UserRole        @default(user)
-  accounts    AuthAccount[]
-  sessions    Session[]
-  documents   Document[]
-  jobs        Job[]
-  ledger      CreditLedger[]
-  methods     SummaryMethod[]
-  benchmarks  Benchmark[]
+  role             UserRole          @default(user)
+  accounts         AuthAccount[]
+  sessions         Session[]
+  documents        Document[]
+  jobs             Job[]
+  ledger           CreditLedger[]
+  methods          SummaryMethod[]
+  benchmarks       Benchmark[]
   /// grant/revoke rows this admin wrote from the admin UI
-  adminLedger CreditLedger[] @relation("LedgerAdmin")
+  adminLedger      CreditLedger[]    @relation("LedgerAdmin")
+  legalAcceptances LegalAcceptance[]
+  legalPublished   LegalDocument[]
 }
 
 /// A user's own summary instructions; jobs snapshot them into Job.options, so edits never touch past jobs.
@@ -131,41 +133,43 @@ model Document {
 }
 
 model Job {
-  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId        String         @db.Uuid
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  documentId    String         @db.Uuid
-  document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  kind          JobKind
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String         @db.Uuid
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId       String         @db.Uuid
+  document         Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  kind             JobKind
   /// { language, lengthPercent, method, preset?|customInstructions?, chapters?, extras?, modelId, model, phaseModels?: { draft, verify | null }, bibliographicLine? } (legacy: fraction)
-  options       Json           @default("{}")
-  status        JobStatus      @default(queued)
-  attempts      Int            @default(0)
-  progress      Int            @default(0)
-  phase         String         @default("queued")
-  heartbeatAt   DateTime?
-  credits       Int            @default(0)
-  inputTokens   Int            @default(0)
-  outputTokens  Int            @default(0)
+  options          Json           @default("{}")
+  status           JobStatus      @default(queued)
+  attempts         Int            @default(0)
+  progress         Int            @default(0)
+  phase            String         @default("queued")
+  heartbeatAt      DateTime?
+  credits          Int            @default(0)
+  inputTokens      Int            @default(0)
+  outputTokens     Int            @default(0)
   /// output of the automatic checks; shown to admins only, never to the job's owner
-  warnings      Json           @default("[]")
+  warnings         Json           @default("[]")
   /// provider model id actually used (the draft model when phases differ)
-  model         String?
+  model            String?
   /// wall-clock processing time of the attempt that finished the job
-  durationMs    Int?
-  resultMdKey   String?
-  resultDocxKey String?
+  durationMs       Int?
+  resultMdKey      String?
+  resultDocxKey    String?
   /// Lab only: the judge's scores (see Evaluation), null when no judge or not yet judged
-  evaluation    Json?
+  evaluation       Json?
   /// user-safe message only
-  error         String?
-  createdAt     DateTime       @default(now())
-  finishedAt    DateTime?
+  error            String?
+  createdAt        DateTime       @default(now())
+  finishedAt       DateTime?
+  /// when the API claimed this failed job to email its owner (at-most-once, see JobNotifier)
+  failureEmailedAt DateTime?
   /// set on admin lab runs: one job per lane, free (credits 0), never retried
-  benchmarkId   String?        @db.Uuid
-  benchmark     Benchmark?     @relation(fields: [benchmarkId], references: [id], onDelete: Cascade)
-  ledger        CreditLedger[]
-  llmCalls      LlmCall[]
+  benchmarkId      String?        @db.Uuid
+  benchmark        Benchmark?     @relation(fields: [benchmarkId], references: [id], onDelete: Cascade)
+  ledger           CreditLedger[]
+  llmCalls         LlmCall[]
 
   @@index([status, kind, createdAt])
   @@index([benchmarkId])
@@ -219,20 +223,20 @@ model Benchmark {
 
 /// Append-only. Balance = SUM(amount). One row per (jobId, type) keeps charge/refund idempotent.
 model CreditLedger {
-  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId        String     @db.Uuid
-  user          User       @relation(fields: [userId], references: [id])
-  type          LedgerType
-  amount        Int
-  jobId         String?    @db.Uuid
-  job           Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String     @db.Uuid
+  user            User       @relation(fields: [userId], references: [id])
+  type            LedgerType
+  amount          Int
+  jobId           String?    @db.Uuid
+  job             Job?       @relation(fields: [jobId], references: [id], onDelete: SetNull)
   /// set on grant/revoke rows written from the admin UI (CLI rows leave it null)
-  adminId       String?    @db.Uuid
-  admin         User?      @relation("LedgerAdmin", fields: [adminId], references: [id], onDelete: SetNull)
-  note          String?
-  stripeEventId String?
+  adminId         String?    @db.Uuid
+  admin           User?      @relation("LedgerAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  note            String?
+  stripeEventId   String?
   paymentIntentId String?
-  createdAt     DateTime   @default(now())
+  createdAt       DateTime   @default(now())
 
   @@unique([jobId, type])
   @@index([userId])
@@ -289,4 +293,45 @@ model ProviderKeyStatus {
   hasKey    Boolean
   source    String
   checkedAt DateTime
+}
+
+enum LegalKind {
+  terms
+  privacy
+}
+
+/// Insert-only: publishing = a new row with version = max+1. The current text of a kind is its highest version.
+model LegalDocument {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind        LegalKind
+  version     Int
+  /// markdown
+  body        String
+  createdAt   DateTime          @default(now())
+  createdById String            @db.Uuid
+  createdBy   User              @relation(fields: [createdById], references: [id])
+  acceptances LegalAcceptance[]
+
+  @@unique([kind, version])
+}
+
+/// Evidence that a user accepted one exact published version.
+model LegalAcceptance {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id])
+  documentId String        @db.Uuid
+  document   LegalDocument @relation(fields: [documentId], references: [id])
+  acceptedAt DateTime      @default(now())
+
+  @@unique([userId, documentId])
+}
+
+/// Admin override of a code-side default email (registry: apps/api/src/auth/email-templates.ts). No row = default.
+model EmailTemplate {
+  key         String   @id
+  subject     String
+  body        String
+  updatedAt   DateTime @updatedAt
+  updatedById String
 }

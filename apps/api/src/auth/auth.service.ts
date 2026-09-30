@@ -3,6 +3,7 @@ import { AuthProvider, User } from '@summarize/db';
 import { config } from '../config';
 import { PrismaService } from '../prisma.service';
 import { maskEmail } from './mask-email';
+import { EmailTemplatesService } from './email-templates.service';
 import { MailService } from './mail.service';
 import { randomToken, sha256 } from './tokens';
 
@@ -16,7 +17,7 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 export class AuthService {
   private logger = new Logger(AuthService.name);
 
-  constructor(private prisma: PrismaService, private mail: MailService) {}
+  constructor(private prisma: PrismaService, private mail: MailService, private templates: EmailTemplatesService) {}
 
   async requestMagicLink(rawEmail: string) {
     const email = normalizeEmail(rawEmail);
@@ -40,11 +41,8 @@ export class AuthService {
     // Sent after the transaction commits so SMTP latency never holds the advisory lock.
     // The link opens a web page that POSTs the token: mail scanners that prefetch GET links cannot burn it.
     const link = `${config.webOrigin}/auth/verify?token=${token}`;
-    await this.mail.send(
-      email,
-      'Your Summarize login link',
-      `Open this link to log in (valid for 15 minutes):\n\n${link}\n\nIf you did not ask for it, ignore this email.`,
-    );
+    const { subject, body } = await this.templates.render('magic_link', { link, email });
+    await this.mail.send(email, subject, body);
   }
 
   async verifyMagicLink(token: string): Promise<string> {
