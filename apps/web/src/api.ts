@@ -6,7 +6,8 @@ export type Model = { id: string; label: string; multiplier: number };
 export type Extra = 'glossary' | 'questions' | 'takeaways';
 export type Me = { id: string; email: string; name: string | null; balance: number; preferences: Preferences; role: 'user' | 'admin' };
 export type TokenParam = 'max_tokens' | 'max_completion_tokens';
-export type AdminProvider = { id: string; baseUrl: string; tokenParam: TokenParam; maxConcurrency: number | null; keyEnv: string };
+export type AdminProviderKey = { status: 'ok' | 'missing' | 'unknown'; source: 'LLM_KEY' | 'LLM_PROVIDERS' | 'none' | null; checkedAt: string | null };
+export type AdminProvider = { id: string; baseUrl: string; tokenParam: TokenParam; maxConcurrency: number | null; keyEnv: string; key: AdminProviderKey };
 export type AdminProviderInput = { baseUrl: string; tokenParam: TokenParam; maxConcurrency: number | null };
 export type AdminModel = {
   id: string; label: string; provider: string; model: string; multiplier: number; temperature: number | null;
@@ -235,8 +236,12 @@ export function useReorderAdminModels() {
   });
 }
 
-export const useAdminProviders = () =>
-  useQuery({ queryKey: ['admin', 'providers'], queryFn: () => api<AdminProvider[]>('/admin/providers') });
+// Poll every 5 s while the worker has not reported a key status (any row unknown) or `fast` (just after a create).
+export const useAdminProviders = (fast = false) =>
+  useQuery({
+    queryKey: ['admin', 'providers'], queryFn: () => api<AdminProvider[]>('/admin/providers'),
+    refetchInterval: (q) => (fast || q.state.data?.some((p) => p.baseUrl !== 'fake' && p.key.status === 'unknown') ? 5000 : false),
+  });
 
 // Models embed the providers, so both admin queries are refreshed.
 const invalidateProviders = (qc: ReturnType<typeof useQueryClient>) => {

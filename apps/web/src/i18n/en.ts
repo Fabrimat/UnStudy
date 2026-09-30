@@ -230,6 +230,9 @@ export default {
       keyHint: "Set this variable on the worker service, or keep the key in LLM_PROVIDERS' apiKeyEnv for seeded providers.",
       unlimited: 'unlimited', add: 'Add provider', idHint: 'ID (a-z, 0-9, hyphen; max 32)', baseUrlHint: 'http(s)://… or "fake"',
       confirmDelete: 'Delete provider {id}?',
+      key: 'Key', keyOk: 'Key found', keyFrom: '(from {source})', keyWaiting: 'Waiting for the worker…', keySeen: 'last seen {time}',
+      keyMissing: 'No key on the worker. Create the variable {keyEnv} on the worker service (Railway redeploys it), then check again.',
+      keyOptional: 'Ignore this if the endpoint needs no key.', copy: 'Copy',
     },
   },
   benchmark: {

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { t } from '../../i18n';
+import { useEffect, useState } from 'react';
+import { fmt, t } from '../../i18n';
 import { AdminProvider, AdminProviderInput, TokenParam, useAdminProviders, useDeleteAdminProvider, useSaveAdminProvider } from '../../api';
 import { btnCls, Err, inputCls } from './ui';
 
@@ -32,6 +32,27 @@ function DraftCells({ d, set }: { d: Draft; set: (p: Partial<Draft>) => void }) 
   );
 }
 
+function KeyCell({ p }: { p: AdminProvider }) {
+  const { status, source, checkedAt } = p.key;
+  if (p.baseUrl === 'fake') return <span>—</span>; // the offline test client needs no key and the worker never reports it
+  if (status === 'ok') {
+    return <span className="text-green-700">{t('admin.providers.keyOk')}{source === 'LLM_PROVIDERS' && <span className="text-xs"> {t('admin.providers.keyFrom', { source })}</span>}</span>;
+  }
+  if (status === 'missing') {
+    return (
+      <div className="max-w-xs text-xs text-amber-700">
+        <p>{t('admin.providers.keyMissing', { keyEnv: p.keyEnv })}</p>
+        <p className="text-gray-500">{t('admin.providers.keyOptional')}</p>
+      </div>
+    );
+  }
+  return (
+    <span className="text-xs text-gray-500">
+      {t('admin.providers.keyWaiting')}{checkedAt && <> {t('admin.providers.keySeen', { time: fmt.date(checkedAt) })}</>}
+    </span>
+  );
+}
+
 const HEAD = [t('admin.providers.baseUrl'), t('admin.providers.tokenParam'), t('admin.providers.maxConcurrency')];
 
 function ProviderRow({ p, onError }: { p: AdminProvider; onError: (e: string) => void }) {
@@ -44,7 +65,11 @@ function ProviderRow({ p, onError }: { p: AdminProvider; onError: (e: string) =>
     <tr>
       <td className="p-2 font-mono">{p.id}</td>
       <DraftCells d={d} set={(x) => setD({ ...d, ...x })} />
-      <td className="p-2 font-mono">{p.keyEnv}</td>
+      <td className="p-2 font-mono">
+        {p.keyEnv}{' '}
+        <button type="button" className="text-xs text-gray-500 underline" onClick={() => navigator.clipboard.writeText(p.keyEnv)}>{t('admin.providers.copy')}</button>
+      </td>
+      <td className="p-2"><KeyCell p={p} /></td>
       <td className="whitespace-nowrap p-2">
         <button className="rounded bg-black px-3 py-1 text-sm text-white disabled:opacity-50" disabled={!dirty || !validDraft(d) || save.isPending} onClick={() => save.mutate({ id: p.id, ...toInput(d) }, done)}>
           {t('common.save')}
@@ -60,8 +85,15 @@ function ProviderRow({ p, onError }: { p: AdminProvider; onError: (e: string) =>
 const blank: Draft = { baseUrl: '', tokenParam: 'max_tokens', maxConcurrency: '' };
 
 export default function AdminProviders() {
-  const admin = useAdminProviders();
+  const [fast, setFast] = useState(false);
+  const admin = useAdminProviders(fast);
   const save = useSaveAdminProvider();
+  // ponytail: after a create, poll fast for at most 2 minutes.
+  useEffect(() => {
+    if (!fast) return;
+    const id = setTimeout(() => setFast(false), 120_000);
+    return () => clearTimeout(id);
+  }, [fast]);
   const providers = admin.data ?? [];
   const [error, setError] = useState('');
   const [newId, setNewId] = useState('');
@@ -82,6 +114,7 @@ export default function AdminProviders() {
             <tr>
               {['ID', ...HEAD].map((h) => <th key={h} className="whitespace-nowrap p-2 font-medium">{h}</th>)}
               <th className="p-2 font-medium">{t('admin.providers.keyEnv')}<div className="text-xs font-normal text-gray-500">{t('admin.providers.keyHint')}</div></th>
+              <th className="p-2 font-medium">{t('admin.providers.key')}</th>
               <th />
             </tr>
           </thead>
@@ -95,7 +128,7 @@ export default function AdminProviders() {
         className="space-y-3 rounded border bg-white p-4"
         onSubmit={(e) => {
           e.preventDefault();
-          save.mutate({ id: newId, create: true, ...toInput(nd) }, { onSuccess: () => { setNewId(''); setNd(blank); } });
+          save.mutate({ id: newId, create: true, ...toInput(nd) }, { onSuccess: () => { setNewId(''); setNd(blank); setFast(true); } });
         }}
       >
         <h2 className="font-medium">{t('admin.providers.add')}</h2>

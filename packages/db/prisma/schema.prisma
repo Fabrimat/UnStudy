@@ -278,3 +278,12 @@ model LlmProvider {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 }
+
+/// Written by the worker: whether it resolved a key for this provider id. Presence only, never the key.
+/// No FK: env-only providers are reported too. source = LLM_KEY (env LLM_KEY_<ID>) | LLM_PROVIDERS (apiKeyEnv of the env entry) | none.
+model ProviderKeyStatus {
+  id        String   @id
+  hasKey    Boolean
+  source    String
+  checkedAt DateTime
+}

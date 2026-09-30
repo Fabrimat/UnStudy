@@ -3,7 +3,7 @@ import { Prisma, User } from '@summarize/db';
 import { CatalogService } from '../catalog/catalog.service';
 import { PrismaService } from '../prisma.service';
 import { CreateModelDto, UpdateModelDto } from './admin.dto';
-import { providerView } from './providers.service';
+import { listProviders } from './providers.service';
 
 const CATALOG_LOCK = 726001;
 
@@ -25,8 +25,7 @@ export class ModelsAdminService {
   // Never includes any key.
   async list() {
     const models = (await this.catalog.all()).map(view); // seeds providers too
-    const providers = await this.prisma.llmProvider.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
-    return { providers: providers.map(providerView), models };
+    return { providers: await listProviders(this.prisma), models };
   }
 
   async create(admin: User, dto: CreateModelDto) {

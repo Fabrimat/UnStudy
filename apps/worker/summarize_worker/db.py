@@ -1,6 +1,9 @@
 """Job queue on the Prisma-owned schema. Identifiers are quoted: Prisma keeps PascalCase/camelCase names."""
+import contextlib
 import logging
 import os
+import threading
+import time
 
 import psycopg.errors
 from psycopg.types.json import Jsonb
@@ -195,3 +198,44 @@ def load_providers(conn, settings, env=None) -> tuple[Provider, ...]:
             log.warning('table "LlmProvider" is missing (API migration not applied yet), using LLM_PROVIDERS')
         return settings.providers
     return providers_from_rows(rows, settings.providers, os.environ if env is None else env)
+
+
+_KEY_STATUS_EVERY = 300  # heartbeat: the API treats a status older than 15 min as stale
+_reported: dict[str, tuple[tuple[bool, str], float]] = {}  # provider id -> ((hasKey, source), time of this process's last write attempt)
+_reported_lock = threading.Lock()
+_warned_missing_status = False
+
+
+def key_source(p: Provider, env) -> str:
+    """Where the resolved key came from: presence only, the key itself never leaves this function."""
+    if not p.api_key:
+        return "none"
+    return "LLM_KEY" if env.get("LLM_KEY_" + p.id.upper().replace("-", "_")) == p.api_key else "LLM_PROVIDERS"
+
+
+def report_key_status(conn, providers, env=None, clock=time.monotonic) -> None:
+    """Tell the API which providers have a key here (hasKey + source only). Writes on change or every 5 min per id;
+    never raises: a failure here must not touch job processing."""
+    global _warned_missing_status
+    env = os.environ if env is None else env
+    try:
+        for p in providers:
+            if p.base_url == "fake":
+                continue
+            status, now = (bool(p.api_key), key_source(p, env)), clock()
+            with _reported_lock:
+                last = _reported.get(p.id)
+                if last and last[0] == status and now - last[1] < _KEY_STATUS_EVERY:
+                    continue
+                _reported[p.id] = (status, now)  # before the write: a failing write retries on change or after 5 min, not every poll
+            conn.execute('INSERT INTO "ProviderKeyStatus" (id, "hasKey", source, "checkedAt") VALUES (%s, %s, %s, now()) '
+                         'ON CONFLICT (id) DO UPDATE SET "hasKey" = EXCLUDED."hasKey", source = EXCLUDED.source, "checkedAt" = now()',
+                         (p.id, *status))
+    except psycopg.errors.UndefinedTable:
+        with contextlib.suppress(Exception):
+            conn.rollback()
+        if not _warned_missing_status:
+            _warned_missing_status = True
+            log.warning('table "ProviderKeyStatus" is missing (API migration not applied yet), key status not reported')
+    except Exception as e:
+        log.warning(f"could not report provider key status ({type(e).__name__})")

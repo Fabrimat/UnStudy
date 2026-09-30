@@ -54,7 +54,7 @@ describe('admin lab', () => {
   it('lists providers and models without keys', async () => {
     const a = await admin();
     const res = await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
-    expect(res.body.providers).toEqual([{ id: 'fake', baseUrl: 'fake', tokenParam: 'max_tokens', maxConcurrency: null, keyEnv: 'LLM_KEY_FAKE' }]);
+    expect(res.body.providers).toMatchObject([{ id: 'fake', keyEnv: 'LLM_KEY_FAKE', key: { status: 'unknown' } }]);
     expect(res.body.models).toHaveLength(3);
     expect(res.body.models[0]).toMatchObject({ id: 'lab', adminOnly: true, temperature: null, priceIn: null });
     expect(JSON.stringify(res.body)).not.toMatch(/ADMIN_SPEC_KEY|sk-should-never-leak/);
@@ -209,6 +209,7 @@ describe('admin lab', () => {
     const send = (method: 'post' | 'patch' | 'delete', cookie: string, url: string, body?: object) =>
       http()[method](url).set('Origin', ORIGIN).set('Cookie', cookie).send(body);
     const model = { id: 'extra', label: 'Extra', model: 'p/extra', multiplier: 1 };
+    const unknown = { status: 'unknown', source: null, checkedAt: null };
 
     it('returns 404 to non-admin callers on every route', async () => {
       const { cookie } = await loginAs(app, 'u@x.com');
@@ -221,15 +222,34 @@ describe('admin lab', () => {
     it('seeds from env on first read, shows keyEnv and no keys', async () => {
       const a = await admin();
       const res = await http().get('/api/admin/providers').set('Cookie', a.cookie).expect(200);
-      expect(res.body).toEqual([{ id: 'fake', baseUrl: 'fake', tokenParam: 'max_tokens', maxConcurrency: null, keyEnv: 'LLM_KEY_FAKE' }]);
+      expect(res.body).toEqual([{ id: 'fake', baseUrl: 'fake', tokenParam: 'max_tokens', maxConcurrency: null, keyEnv: 'LLM_KEY_FAKE', key: unknown }]);
       expect(JSON.stringify(res.body)).not.toMatch(/ADMIN_SPEC_KEY|sk-should-never-leak|apiKeyEnv/);
+    });
+
+    it('reports the worker key status: unknown, ok, missing, stale', async () => {
+      const a = await admin();
+      const get = async () => (await http().get('/api/admin/providers').set('Cookie', a.cookie).expect(200)).body[0];
+      expect((await get()).key).toEqual(unknown);
+      const now = new Date();
+      await prisma.providerKeyStatus.create({ data: { id: 'fake', hasKey: true, source: 'LLM_PROVIDERS', checkedAt: now } });
+      expect((await get()).key).toEqual({ status: 'ok', source: 'LLM_PROVIDERS', checkedAt: now.toISOString() });
+      await prisma.providerKeyStatus.update({ where: { id: 'fake' }, data: { hasKey: false, source: 'none' } });
+      expect((await get()).key).toMatchObject({ status: 'missing', source: 'none' });
+      const old = new Date(Date.now() - 20 * 60_000);
+      await prisma.providerKeyStatus.update({ where: { id: 'fake' }, data: { hasKey: true, source: 'LLM_KEY', checkedAt: old } });
+      const p = await get();
+      expect(p.key).toEqual({ status: 'unknown', source: 'LLM_KEY', checkedAt: old.toISOString() });
+      expect(Object.keys(p.key).sort()).toEqual(['checkedAt', 'source', 'status']);
+      const m = await http().get('/api/admin/models').set('Cookie', a.cookie).expect(200);
+      expect(m.body.providers[0].key.status).toBe('unknown');
+      expect((await send('patch', a.cookie, '/api/admin/providers/fake', { maxConcurrency: 2 }).expect(200)).body.key.source).toBe('LLM_KEY');
     });
 
     it('creates, rejects duplicates and invalid input', async () => {
       const a = await admin();
       const url = '/api/admin/providers';
       const res = await send('post', a.cookie, url, { id: 'my-llm', baseUrl: ' https://api.x.com/v1 ', maxConcurrency: 4 }).expect(201);
-      expect(res.body).toEqual({ id: 'my-llm', baseUrl: 'https://api.x.com/v1', tokenParam: 'max_tokens', maxConcurrency: 4, keyEnv: 'LLM_KEY_MY_LLM' });
+      expect(res.body).toEqual({ id: 'my-llm', baseUrl: 'https://api.x.com/v1', tokenParam: 'max_tokens', maxConcurrency: 4, keyEnv: 'LLM_KEY_MY_LLM', key: unknown });
       await send('post', a.cookie, url, { id: 'my-llm', baseUrl: 'fake' }).expect(409);
       await send('post', a.cookie, url, { id: 'ok', baseUrl: 'fake', tokenParam: 'max_completion_tokens' }).expect(201);
       const list = (await http().get(url).set('Cookie', a.cookie)).body.map((p: { id: string }) => p.id);

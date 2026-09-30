@@ -43,6 +43,7 @@ def run(kind: str, settings: Settings, stop: threading.Event, user_only: bool = 
                 last_recovery = time.time()
             # before the claim: an error here never strands a running job
             providers = db.load_providers(conn, settings)
+            db.report_key_status(conn, providers)
             models = db.load_models(conn, settings, {p.id for p in providers})
             clients = {p: clients.get(p) or make_client(p) for p in providers}  # evicts stale clients
             job = db.claim(conn, kind, user_only=user_only)

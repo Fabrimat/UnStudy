@@ -7,9 +7,32 @@ import { CreateProviderDto, UpdateProviderDto } from './admin.dto';
 const CATALOG_LOCK = 726001;
 
 // keyEnv is informational and computed: the DB never stores a key or an env var name.
-export const providerView = ({ id, baseUrl, tokenParam, maxConcurrency }: { id: string; baseUrl: string; tokenParam: string; maxConcurrency: number | null }) => ({
-  id, baseUrl, tokenParam, maxConcurrency, keyEnv: 'LLM_KEY_' + id.toUpperCase().replace(/-/g, '_'),
+// The worker reports presence only (ProviderKeyStatus); no report, or one older than this, means unknown.
+const KEY_STALE_MS = 15 * 60_000;
+type KeyStatus = { hasKey: boolean; source: string; checkedAt: Date };
+
+const keyView = (s?: KeyStatus | null) => ({
+  status: !s || Date.now() - s.checkedAt.getTime() > KEY_STALE_MS ? ('unknown' as const) : s.hasKey ? ('ok' as const) : ('missing' as const),
+  source: (s?.source ?? null) as 'LLM_KEY' | 'LLM_PROVIDERS' | 'none' | null,
+  checkedAt: s?.checkedAt.toISOString() ?? null,
 });
+
+export const providerView = (
+  { id, baseUrl, tokenParam, maxConcurrency }: { id: string; baseUrl: string; tokenParam: string; maxConcurrency: number | null },
+  status?: KeyStatus | null,
+) => ({
+  id, baseUrl, tokenParam, maxConcurrency, keyEnv: 'LLM_KEY_' + id.toUpperCase().replace(/-/g, '_'), key: keyView(status),
+});
+
+// Two queries joined in memory (no FK: env-only providers are reported too).
+export const listProviders = async (prisma: PrismaService) => {
+  const [rows, statuses] = await Promise.all([
+    prisma.llmProvider.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }),
+    prisma.providerKeyStatus.findMany(),
+  ]);
+  const byId = new Map(statuses.map((s) => [s.id, s]));
+  return rows.map((r) => providerView(r, byId.get(r.id)));
+};
 
 const host = (baseUrl: string) => {
   try {
@@ -27,7 +50,7 @@ export class ProvidersAdminService {
 
   async list() {
     await this.catalog.ensureSeeded();
-    return (await this.prisma.llmProvider.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] })).map(providerView);
+    return listProviders(this.prisma);
   }
 
   async create(admin: User, dto: CreateProviderDto) {
@@ -38,7 +61,7 @@ export class ProvidersAdminService {
       });
     });
     this.logger.log(`Provider created: admin ${admin.id}, ${row.id}, ${host(row.baseUrl)}`);
-    return providerView(row);
+    return providerView(row, await this.prisma.providerKeyStatus.findUnique({ where: { id: row.id } }));
   }
 
   async update(admin: User, id: string, dto: UpdateProviderDto) {
@@ -47,7 +70,7 @@ export class ProvidersAdminService {
       return tx.llmProvider.update({ where: { id }, data: { ...dto } });
     });
     this.logger.log(`Provider updated: admin ${admin.id}, ${id}, ${host(row.baseUrl)}, fields ${Object.keys(dto).join(',') || '-'}`);
-    return providerView(row);
+    return providerView(row, await this.prisma.providerKeyStatus.findUnique({ where: { id } }));
   }
 
   async remove(admin: User, id: string) {
