@@ -156,3 +156,11 @@ def _cap(chapters: list[Chapter], max_words: int) -> list[Chapter]:
             out.append(Chapter(f"{c.title} (part {k + 1}/{parts})", c.page_from, c.page_to,
                                " ".join(words[k * size:(k + 1) * size])))
     return out
+
+
+def chapters_text(chapters: list[Chapter]) -> str:
+    """Plain text as the summarizer sees it: a header line per chapter, blank line between chapters."""
+    def header(c: Chapter) -> str:
+        pages = "" if c.page_from is None else f" (pp. {c.page_from}\u2013{c.page_to})"
+        return f"=== {c.title}{pages} ==="
+    return "\n\n".join(f"{header(c)}\n{c.text}" for c in chapters)

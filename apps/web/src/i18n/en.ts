@@ -245,6 +245,7 @@ export default {
     waitLanes: 'Wait for all lanes to finish',
     confirmDelete: 'Delete this run and all its results?',
     deleteRun: 'Delete run',
+    downloadZip: 'Download .zip',
     stillRunning: 'Some lanes are still running; try again when they finish.',
     failedCalls: ' ({n} failed)',
     colLane: 'Lane',

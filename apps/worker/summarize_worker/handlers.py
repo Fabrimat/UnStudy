@@ -4,9 +4,9 @@ import time
 from . import db
 from .docx import to_docx
 from .llm import Usage
-from .pipeline import Phase, summarize_chapters
+from .pipeline import Phase, prompts_dump, summarize_chapters
 from .prompts import length_percent, render_custom, render_instructions
-from .text import Chapter, clean_pages, extract_pages, inspect_pdf, split_chapters
+from .text import Chapter, chapters_text, clean_pages, extract_pages, inspect_pdf, split_chapters
 
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PAGES = 400
@@ -77,6 +77,23 @@ def read_chapters(pdf: bytes, ocr_langs: str | None, on_page=None) -> tuple[list
     return chapters, pages_count, used_ocr
 
 
+def save_lab_source(storage, job: dict, chapters: list[Chapter]) -> None:
+    # best effort: the Lab source text is a download convenience and must never fail the lane
+    try:
+        storage.put(f"users/{job['userId']}/lab/{job['benchmarkId']}/source.txt",
+                    chapters_text(chapters).encode("utf-8"), "text/plain; charset=utf-8")
+    except Exception:
+        log.warning(f"could not store the source text of Lab run {job['benchmarkId']}", exc_info=True)
+
+
+def save_lab_prompt(storage, job: dict, dump: str) -> None:
+    try:
+        storage.put(f"users/{job['userId']}/lab/{job['benchmarkId']}/prompts/{job['id']}.txt",
+                    dump.encode("utf-8"), "text/plain; charset=utf-8")
+    except Exception:
+        log.warning(f"could not store the prompts of Lab job {job['id']}", exc_info=True)
+
+
 def _page_heartbeat(conn, job_id, analyze: bool, attempts: int):
     # extraction with OCR can outlast the 10-minute stale window, so every page updates the heartbeat
     def on_page(i: int, n: int):
@@ -110,12 +127,16 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
         # call the LLM on it, and never retry (a retry would just re-read the same swapped file).
         raise FileChanged("The file changed after it was priced")
     opts = job["options"]
+    chapters_all = chapters  # the source text is always the whole document
     if (picked := opts.get("chapters")) is not None:
         if len(chapters) != len(doc["chapters"] or []):
             raise FileChanged("The chapter split changed after it was priced")
         if not picked or not all(isinstance(i, int) and 0 <= i < len(chapters) for i in picked):
             raise FileChanged("Chapter selection does not match the document")  # the API validates this; never retry
         chapters = [chapters[i] for i in picked]
+    lab = job.get("benchmarkId") is not None
+    if lab:
+        save_lab_source(storage, job, chapters_all)
     percent, extras = length_percent(opts), opts.get("extras") or ()
     usage = Usage()
     custom = opts.get("customInstructions")
@@ -136,6 +157,9 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
     def on_call(rec: dict):
         db.record_call(conn, job, rec)  # a raising recorder is swallowed and logged by call_model
 
+    if lab:
+        save_lab_prompt(storage, job, prompts_dump(phase(draft_entry), phase(verify_entry), chapters, instructions,
+                                                  length_percent=percent, bibliographic_line=opts.get("bibliographicLine")))
     markdown, warnings = summarize_chapters(
         phase(draft_entry), chapters, instructions, verify=phase(verify_entry),
         length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),

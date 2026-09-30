@@ -7,6 +7,10 @@ import { config } from '../config';
 const rfc5987 = (value: string) =>
   encodeURIComponent(value).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
+// Post-OCR text of a Lab run, written by the worker's lab lanes.
+export const labSourceKey = (userId: string, benchmarkId: string) => `users/${userId}/lab/${benchmarkId}/source.txt`;
+export const labPromptKey = (userId: string, benchmarkId: string, jobId: string) => `users/${userId}/lab/${benchmarkId}/prompts/${jobId}.txt`;
+
 @Injectable()
 export class StorageService implements OnModuleInit {
   private bucket = config.s3.bucket;
@@ -82,6 +86,16 @@ export class StorageService implements OnModuleInit {
   async get(key: string): Promise<Buffer> {
     const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
     return Buffer.from(await res.Body!.transformToByteArray());
+  }
+
+  // null when the object does not exist
+  async getObject(key: string): Promise<Buffer | null> {
+    try {
+      return await this.get(key);
+    } catch (e: any) {
+      if (e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404) return null;
+      throw e;
+    }
   }
 
   // A missing key counts as deleted (S3 reports it as success); any per-key error throws.

@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { creditsFor } from '../credits/credits';
 import { toJobDto } from '../jobs/job.dto';
 import { PrismaService } from '../prisma.service';
-import { StorageService } from '../storage/storage.service';
+import { labPromptKey, labSourceKey, StorageService } from '../storage/storage.service';
 import { page } from '../pagination';
 import { ListDocumentsDto, MAX_UPLOAD_BYTES } from './documents.dto';
 
@@ -116,7 +116,9 @@ export class DocumentsService {
       if (doc.jobs.some((j) => j.status === 'queued' || j.status === 'running')) {
         throw new ConflictException('Document has jobs in progress');
       }
-      const keys = [doc.s3Key, ...doc.jobs.flatMap((j) => [j.resultMdKey, j.resultDocxKey])].filter((k): k is string => !!k);
+      const labJobs = doc.jobs.filter((j) => j.benchmarkId); // their benchmarks cascade with the document
+      const labRuns = new Set(labJobs.map((j) => j.benchmarkId!));
+      const keys = [doc.s3Key, ...doc.jobs.flatMap((j) => [j.resultMdKey, j.resultDocxKey]), ...[...labRuns].map((b) => labSourceKey(user.id, b)), ...labJobs.map((j) => labPromptKey(user.id, j.benchmarkId!, j.id))].filter((k): k is string => !!k);
       // S3 first: if it fails the transaction rolls back and the DB stays intact.
       await this.storage.delete(keys);
       await tx.document.delete({ where: { id } });

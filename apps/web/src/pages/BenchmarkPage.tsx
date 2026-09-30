@@ -89,6 +89,12 @@ export default function BenchmarkPage() {
             {Array.isArray(o.chapters) && ` · ${t('common.parts', { n: o.chapters.length })}`}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          {running ? (
+            <span title={t('benchmark.waitLanes')} className="rounded border bg-white px-3 py-1 text-sm opacity-50">{t('benchmark.downloadZip')}</span>
+          ) : (
+            <a href={`/api/admin/benchmarks/${b.id}/zip`} download className="rounded border bg-white px-3 py-1 text-sm">{t('benchmark.downloadZip')}</a>
+          )}
         <button
           disabled={running || remove.isPending}
           title={running ? t('benchmark.waitLanes') : undefined}
@@ -97,6 +103,7 @@ export default function BenchmarkPage() {
         >
           {t('benchmark.deleteRun')}
         </button>
+        </div>
       </div>
       {remove.error && (
         <p className="text-red-600">

@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma.service';
 import { StorageService } from '../src/storage/storage.service';
+import { unzip } from './unzip';
 import { createApp, loginAs, ORIGIN, resetDb } from './helpers';
 
 const SETTINGS = { language: 'auto', lengthPercent: 20, method: 'studio' };
@@ -187,6 +188,40 @@ describe('admin lab', () => {
     await patch(b.cookie, res.body.id, { name: 'x' }).expect(404);
   });
 
+  it('exports a finished run as a zip; 404 for others, 409 while running', async () => {
+    const a = await admin();
+    const b = await admin('b@x.com');
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, name: 'Run: 1', ...SETTINGS, lanes: LANES }).expect(201);
+    const get = (cookie: string) => http().get(`/api/admin/benchmarks/${res.body.id}/zip`).set('Cookie', cookie).buffer().parse((r, cb) => {
+      const c: Buffer[] = [];
+      r.on('data', (x: Buffer) => c.push(x));
+      r.on('end', () => cb(null, Buffer.concat(c)));
+    });
+    await get(b.cookie).expect(404);
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'running' } });
+    await get(a.cookie).expect(409);
+    const key = `users/${a.user.id}/results/zip.md`;
+    await app.get(StorageService).put(key, Buffer.from('# S\n'), 'text/markdown');
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id, options: { path: ['lane'], equals: 0 } }, data: { status: 'done', resultMdKey: key } });
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id, options: { path: ['lane'], equals: 1 } }, data: { status: 'failed' } });
+    const jobs = await prisma.job.findMany({ where: { benchmarkId: res.body.id }, orderBy: { createdAt: 'asc' } });
+    const lane1 = jobs.find((j) => (j.options as { lane: number }).lane === 1)!;
+    await app.get(StorageService).put(`users/${a.user.id}/lab/${res.body.id}/prompts/${lane1.id}.txt`, Buffer.from('prompt'), 'text/plain');
+    const ok = await get(a.cookie).expect(200);
+    expect(ok.headers['content-type']).toContain('application/zip');
+    expect(ok.headers['content-disposition']).toContain('lab-Run__1.zip');
+    const files = unzip(ok.body);
+    expect(Object.keys(files).sort()).toEqual(['benchmark.json', 'prompts/02-lab.txt', 'results/01-fast-big.md', 'source/README.txt']);
+    const json = JSON.parse(files['benchmark.json'].toString());
+    expect(json.id).toBe(res.body.id);
+    expect(files['prompts/02-lab.txt'].toString()).toBe('prompt');
+    expect(json.exportedAt).toBeDefined();
+    expect(files['results/01-fast-big.md'].toString()).toBe('# S\n');
+    await app.get(StorageService).put(`users/${a.user.id}/lab/${res.body.id}/source.txt`, Buffer.from('ocr'), 'text/plain');
+    expect(unzip((await get(a.cookie).expect(200)).body)['source/reading.txt'].toString()).toBe('ocr');
+  });
+
   it('refuses to delete a running benchmark, otherwise deletes files and rows', async () => {
     const a = await admin();
     const d = await doc(a.user.id);
@@ -197,12 +232,36 @@ describe('admin lab', () => {
     const key = `users/${a.user.id}/results/lab.md`;
     const storage = app.get(StorageService);
     await storage.put(key, Buffer.from('# S\n'), 'text/markdown');
+    const src = `users/${a.user.id}/lab/${res.body.id}/source.txt`;
+    await storage.put(src, Buffer.from('ocr'), 'text/plain');
+    const [job] = await prisma.job.findMany({ where: { benchmarkId: res.body.id } });
+    const prompt = `users/${a.user.id}/lab/${res.body.id}/prompts/${job.id}.txt`;
+    await storage.put(prompt, Buffer.from('p'), 'text/plain');
     await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'done', resultMdKey: key } });
     await del().expect(204);
     expect(await storage.head(key)).toBeNull();
+    expect(await storage.head(src)).toBeNull();
+    expect(await storage.head(prompt)).toBeNull();
     expect(await prisma.benchmark.count()).toBe(0);
     expect(await prisma.job.count({ where: { benchmarkId: res.body.id } })).toBe(0);
     await del().expect(404);
+  });
+
+  it('deleting a document also deletes the source text of its lab runs', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: LANES }).expect(201);
+    const src = `users/${a.user.id}/lab/${res.body.id}/source.txt`;
+    const storage = app.get(StorageService);
+    await storage.put(src, Buffer.from('ocr'), 'text/plain');
+    const [job] = await prisma.job.findMany({ where: { benchmarkId: res.body.id } });
+    const prompt = `users/${a.user.id}/lab/${res.body.id}/prompts/${job.id}.txt`;
+    await storage.put(prompt, Buffer.from('p'), 'text/plain');
+    await prisma.job.updateMany({ where: { benchmarkId: res.body.id }, data: { status: 'done' } });
+    await http().delete(`/api/documents/${d.id}`).set('Origin', ORIGIN).set('Cookie', a.cookie).expect(204);
+    expect(await storage.head(src)).toBeNull();
+    expect(await storage.head(prompt)).toBeNull();
+    expect(await prisma.benchmark.count()).toBe(0);
   });
 
   describe('providers', () => {

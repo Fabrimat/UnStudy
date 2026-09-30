@@ -88,3 +88,9 @@ def test_ocr_is_skipped_for_a_page_too_large_to_render_safely():
     doc.close()
     pages, _, used_ocr = extract_pages(pdf, ocr_langs="eng")
     assert pages == [""] and used_ocr is False
+
+
+def test_chapters_text_headers_and_separator():
+    from summarize_worker.text import Chapter, chapters_text
+    out = chapters_text([Chapter("One", 1, 3, "a b"), Chapter("Two", None, None, "c")])
+    assert out == "=== One (pp. 1\u20133) ===\na b\n\n=== Two ===\nc"

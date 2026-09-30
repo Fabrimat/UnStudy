@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { User } from '@summarize/db';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/session.guard';
 import { AdminGuard } from './admin.guard';
 import { CreateBenchmarkDto, CreateModelDto, CreateProviderDto, ListBenchmarksDto, ModelOrderDto, RenameBenchmarkDto, UpdateModelDto, UpdateProviderDto } from './admin.dto';
@@ -68,6 +69,12 @@ export class AdminController {
   @Get('benchmarks/:id')
   get(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.benchmarks.get(user, id);
+  }
+
+  @Get('benchmarks/:id/zip')
+  async zip(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const { filename, data } = await this.benchmarks.zip(user, id);
+    res.type('application/zip').attachment(filename).send(data);
   }
 
   @Patch('benchmarks/:id')

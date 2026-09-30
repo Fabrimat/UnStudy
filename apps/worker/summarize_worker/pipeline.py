@@ -36,6 +36,40 @@ def _header(line: str | None, chapter: Chapter) -> str | None:
     return f"{line}, pp. {chapter.page_from}–{chapter.page_to}"
 
 
+def draft_prompt(chapter: Chapter, length_percent: int, bibliographic_line: str | None, text: str | None = None) -> str:
+    """The draft user message; text overrides the chapter text (the Lab prompt dump uses a placeholder)."""
+    header = _header(bibliographic_line, chapter)
+    prompt = (f"Target length: about {chapter.words * length_percent // 100} words "
+              f"({length_percent}% of the original).\n\n")
+    if header:
+        prompt += f"Use exactly this bibliographic line under the title:\n{header}\n\n"
+    return prompt + f"Reading to summarize:\n\n{chapter.text if text is None else text}"
+
+
+def verify_prompt(original: str, draft: str) -> str:
+    return f"ORIGINAL TEXT:\n\n{original}\n\n=====\n\nDRAFT SUMMARY:\n\n{draft}"
+
+
+def prompts_dump(draft: Phase, verify: Phase | None, chapters: list[Chapter], instructions: str, *,
+                 length_percent: int, bibliographic_line: str | None) -> str:
+    """Every message the run sends, built by the same functions as the real calls, with the chapter and
+    draft texts replaced by placeholders so the file stays small."""
+    n = len(chapters)
+
+    def placeholders(i: int, c: Chapter) -> tuple[str, str]:
+        return f"<<chapter {i + 1} text: {c.words} words>>", f"<<chapter {i + 1} draft summary>>"
+
+    parts = [f"=== DRAFT \u00b7 model {draft.entry.id} ===\n[system]\n{instructions}"]
+    for i, c in enumerate(chapters):
+        parts.append(f'[user \u00b7 chapter {i + 1}/{n} "{c.title}"]\n'
+                     + draft_prompt(c, length_percent, bibliographic_line, placeholders(i, c)[0]))
+    if verify is not None:
+        parts.append(f"=== FACT-CHECK \u00b7 model {verify.entry.id} ===\n[system]\n{VERIFY_INSTRUCTIONS}")
+        for i, c in enumerate(chapters):
+            parts.append(f'[user \u00b7 chapter {i + 1}/{n} "{c.title}"]\n' + verify_prompt(*placeholders(i, c)))
+    return "\n\n".join(parts) + "\n"
+
+
 def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str, *, length_percent: int,
                        bibliographic_line: str | None, verify: Phase | None = None,
                        on_progress: Callable[[int, str], None] | None = None,
@@ -67,10 +101,7 @@ def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str,
         label = f"Chapter {i + 1}/{len(chapters)}"
         header = _header(bibliographic_line, chapter)
         target = chapter.words * length_percent // 100
-        prompt = f"Target length: about {target} words ({length_percent}% of the original).\n\n"
-        if header:
-            prompt += f"Use exactly this bibliographic line under the title:\n{header}\n\n"
-        prompt += f"Reading to summarize:\n\n{chapter.text}"
+        prompt = draft_prompt(chapter, length_percent, bibliographic_line)
         step = i * phases
         log.info(f"{label}: draft")
         text = fix_format(_call(draft, prompt, system=instructions, usage=usage,
@@ -79,7 +110,7 @@ def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str,
         if verify is not None:
             log.info(f"{label}: fact-check")
             checked = _call(verify,
-                            f"ORIGINAL TEXT:\n\n{chapter.text}\n\n=====\n\nDRAFT SUMMARY:\n\n{text}",
+                            verify_prompt(chapter.text, text),
                             system=VERIFY_INSTRUCTIONS, usage=usage,
                             on_call=recorder("verify", verify, i),
                             on_tokens=progress(step + 1, f"{label}: fact-check", len(text.split())))

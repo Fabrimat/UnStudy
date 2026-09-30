@@ -5,14 +5,18 @@ import { ModelEntry } from '../config';
 import { resolveSettings } from '../jobs/jobs.service';
 import { page } from '../pagination';
 import { PrismaService } from '../prisma.service';
-import { StorageService } from '../storage/storage.service';
+import { labPromptKey, labSourceKey, StorageService } from '../storage/storage.service';
 import { CreateBenchmarkDto, ListBenchmarksDto } from './admin.dto';
+import { zip } from '../zip';
 import { jobCost, usageByJob } from './usage';
 
 // A catalogue entry may have been removed since the run: show the bare id, cost stays unknown.
 const modelView = (e: ModelEntry | undefined, id: string) => {
   return { modelId: id, label: e?.label ?? id, provider: e?.provider ?? null, model: e?.model ?? null };
 };
+
+const active = (j: { status: string }) => j.status === 'queued' || j.status === 'running';
+const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]/g, '_');
 
 type Lane = { draft: string; verify: string | null };
 
@@ -127,6 +131,35 @@ export class BenchmarksService {
     return { id: b.id, name: (b.options as { name?: string }).name ?? null, createdAt: b.createdAt, options: b.options, document: b.document, lanes };
   }
 
+  // ponytail: built in memory (Lab runs are a few MB); stream if runs ever reach hundreds of MB
+  async zip(user: User, id: string) {
+    const detail = await this.get(user, id);
+    const jobs = await this.prisma.job.findMany({ where: { benchmarkId: id }, select: { id: true, status: true, resultMdKey: true } });
+    if (jobs.some(active)) throw new ConflictException('Benchmark has lanes in progress');
+    const files: { name: string; data: Buffer }[] = [
+      { name: 'benchmark.json', data: Buffer.from(JSON.stringify({ ...detail, exportedAt: new Date() }, null, 2)) },
+    ];
+    const text = await this.storage.getObject(labSourceKey(user.id, id));
+    files.push(
+      text
+        ? { name: `source/${safe(detail.document.filename.replace(/\.pdf$/i, ''))}.txt`, data: text }
+        : {
+            name: 'source/README.txt',
+            data: Buffer.from('The extracted text is not available for this document (this run predates text export).\nA new Lab run on this document will create it.\n'),
+          },
+    );
+    for (const l of detail.lanes) {
+      const key = jobs.find((j) => j.id === l.jobId)?.resultMdKey;
+      const md = l.status === 'done' && key ? await this.storage.getObject(key) : null;
+      const prompt = await this.storage.getObject(labPromptKey(user.id, id, l.jobId));
+      const base = `${String(l.index + 1).padStart(2, '0')}-${safe(l.draft.modelId)}${l.verify ? `-${safe(l.verify.modelId)}` : ''}`;
+      if (md) files.push({ name: `results/${base}.md`, data: md });
+      if (prompt) files.push({ name: `prompts/${base}.txt`, data: prompt });
+    }
+    this.logger.log(`Benchmark exported: admin ${user.id}, ${id}`);
+    return { filename: `lab-${safe(detail.name || id)}.zip`, data: zip(files) };
+  }
+
   // empty name = untitled
   async rename(user: User, id: string, name: string) {
     const b = await this.prisma.benchmark.findFirst({ where: { id, userId: user.id } });
@@ -139,8 +172,8 @@ export class BenchmarksService {
   async remove(user: User, id: string) {
     const b = await this.prisma.benchmark.findFirst({ where: { id, userId: user.id }, include: { jobs: true } });
     if (!b) throw new NotFoundException('Benchmark not found');
-    if (b.jobs.some((j) => j.status === 'queued' || j.status === 'running')) throw new ConflictException('Benchmark has lanes in progress');
-    await this.storage.delete(b.jobs.flatMap((j) => [j.resultMdKey, j.resultDocxKey]).filter((k): k is string => !!k));
+    if (b.jobs.some(active)) throw new ConflictException('Benchmark has lanes in progress');
+    await this.storage.delete(b.jobs.flatMap((j) => [j.resultMdKey, j.resultDocxKey]).filter((k): k is string => !!k).concat(labSourceKey(user.id, id), b.jobs.map((j) => labPromptKey(user.id, id, j.id))));
     await this.prisma.benchmark.delete({ where: { id } });
     this.logger.log(`Benchmark deleted: ${id}`);
   }

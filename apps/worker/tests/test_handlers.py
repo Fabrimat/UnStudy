@@ -77,3 +77,83 @@ def test_db_catalog_replaces_env_ids(settings):
     models = models_from_rows([row("only")], {"default"}, settings.models)
     with pytest.raises(UnknownModel):
         resolve_phases(settings, {"modelId": "alt"}, models)  # env id absent from a non-empty table
+
+
+# --- Lab source text persisted to storage (no database needed) ---
+from types import SimpleNamespace  # noqa: E402
+
+from summarize_worker import handlers  # noqa: E402
+from summarize_worker.text import Chapter  # noqa: E402
+
+CHAPTERS = [Chapter("One", 1, 2, "a b c"), Chapter("Two", 3, 3, "d e")]
+DOC = {"id": "d1", "userId": "u1", "words": 5, "chapters": [{}, {}]}
+SOURCE_KEY = "users/u1/lab/b1/source.txt"
+JOB = {"id": "j1", "documentId": "d1", "userId": "u1", "attempts": 1, "options": {}}
+LAB_JOB = {**JOB, "benchmarkId": "b1"}
+
+
+class FakeStorage:
+    def __init__(self, fail_text=False):
+        self.puts, self.fail_text = {}, fail_text
+
+    def put(self, key, body, content_type):
+        if self.fail_text and key.endswith(".txt"):
+            raise OSError("s3 down")
+        self.puts[key] = (body, content_type)
+
+
+@pytest.fixture
+def calls(monkeypatch):
+    calls = []
+    monkeypatch.setattr(handlers, "read_chapters", lambda *a, **k: (CHAPTERS, 3, False))
+    monkeypatch.setattr(handlers, "load_pdf", lambda *a: b"")
+    monkeypatch.setattr(handlers, "summarize_chapters", lambda *a, **k: ("# md", []))
+    monkeypatch.setattr(handlers, "to_docx", lambda md: b"docx")
+    monkeypatch.setattr(handlers.db, "get_document", lambda *a: DOC)
+    for name in ("progress", "record_call", "finish_analyze", "finish_summary"):
+        monkeypatch.setattr(handlers.db, name, lambda *a, _n=name, **k: calls.append(_n))
+    return calls
+
+
+def run_summarize(storage, job, options=None, verify=None):
+    job = {**job, "options": {"language": "en", "preset": "abstract", "lengthPercent": 20, **(options or {})}}
+    handlers.handle_summarize(None, storage, SimpleNamespace(ocr_langs=None, providers=[SimpleNamespace(id="default")]),
+                              {"default": None}, job,
+                              SimpleNamespace(model="m", id="m", provider="default", temperature=None), verify)
+
+
+def test_lab_lane_writes_whole_source_text(calls):
+    st = FakeStorage()
+    run_summarize(st, LAB_JOB, {"chapters": [1]})
+    body, ctype = st.puts[SOURCE_KEY]
+    assert body.decode() == "=== One (pp. 1\u20132) ===\na b c\n\n=== Two (pp. 3\u20133) ===\nd e"
+    assert ctype == "text/plain; charset=utf-8" and "finish_summary" in calls
+
+
+def test_normal_summarize_and_analyze_write_no_text(calls):
+    st = FakeStorage()
+    run_summarize(st, JOB)
+    handlers.handle_analyze(None, st, SimpleNamespace(ocr_langs=None), JOB)
+    assert not any(k.endswith(".txt") for k in st.puts) and "finish_analyze" in calls
+
+
+def test_source_put_failure_does_not_fail_lane(calls):
+    st = FakeStorage(fail_text=True)
+    run_summarize(st, LAB_JOB)
+    assert "finish_summary" in calls and "users/u1/results/j1.md" in st.puts
+
+
+def test_lab_lane_writes_prompts_without_chapter_text(calls, monkeypatch):
+    monkeypatch.setattr(handlers, "render_instructions", lambda *a: "SYSTEM RULES")
+    st = FakeStorage()
+    verify = SimpleNamespace(model="v", id="v", provider="default", temperature=None)
+    run_summarize(st, LAB_JOB, verify=verify)
+    dump = st.puts["users/u1/lab/b1/prompts/j1.txt"][0].decode()
+    assert "SYSTEM RULES" in dump and "<<chapter 2 text: 2 words>>" in dump and "=== FACT-CHECK" in dump
+    assert "a b c" not in dump and "d e" not in dump
+
+
+def test_normal_summarize_writes_no_prompts(calls):
+    st = FakeStorage()
+    run_summarize(st, JOB)
+    assert not any("prompts" in k for k in st.puts)
