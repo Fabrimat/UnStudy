@@ -107,6 +107,29 @@ def split_chapters(pages: list[str], toc: list, max_words: int = 15000) -> list[
     return _cap(chapters, max_words)
 
 
+MATTER_TITLE = re.compile(
+    r"^\W*(table of contents|contents|copyright|dedication|acknowledge?ments?|index|bibliography|references|notes"
+    r"|about the authors?|list of (figures|tables)"
+    r"|indice( analitico| dei nomi)?|sommario|bibliografia|note|ringraziamenti|colophon)\W*(?: \(part \d+/\d+\))?$", re.IGNORECASE)  # optional suffix: _cap renames long chapters
+KEEP_SHORT = re.compile(r"abstract|preface|introduction|conclusions?|prefazione|introduzione|conclusion[ei]", re.IGNORECASE)
+MIN_CHAPTER_WORDS = 300
+
+
+def drop_matter(chapters: list[Chapter]) -> list[Chapter]:
+    """Front/back matter removed. Not applied by split_chapters (it would change the analyze fingerprint)."""
+    # ponytail: title list (EN/IT) + a <300-word floor only on the leading/trailing runs, exempting abstract/intro/
+    # conclusion titles; other languages slip through unless short at the ends, and a short real chapter at the very
+    # start/end is lost. Never returns empty.
+    def matter(c): return bool(MATTER_TITLE.match(c.title))
+    def droppable(c): return matter(c) or (c.words < MIN_CHAPTER_WORDS and not KEEP_SHORT.search(c.title))
+    lo, hi = 0, len(chapters)
+    while lo < hi and droppable(chapters[lo]):
+        lo += 1
+    while hi > lo and droppable(chapters[hi - 1]):
+        hi -= 1
+    return [c for c in chapters[lo:hi] if not matter(c)] or chapters
+
+
 def _by_outline(pages: list[str], toc: list) -> list[Chapter]:
     starts, seen = [], set()
     for level, title, page in toc:

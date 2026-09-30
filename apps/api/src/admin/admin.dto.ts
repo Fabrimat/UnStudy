@@ -26,6 +26,11 @@ export class CreateBenchmarkDto extends JobSettingsDto {
   @MaxLength(80)
   name?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  judge?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(MAX_LANES)

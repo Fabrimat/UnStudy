@@ -21,6 +21,9 @@ def run_checks(summary: str, original: str, length_percent: int = 33) -> list[st
     problems = []
     # running headers like "CONSENSUS MODEL OF DEMOCRACY  45" split quotes across pages: drop them first
     original = re.sub(r"^(?:\d+\s+)?[A-Z][A-Z ,:;'’\-–]{3,}(?:\s+\d+)?\s*$", " ", original, flags=re.M)
+    # footnote markers glued to words ("Minister,3 the", "members.12") would break the chunk match; standalone numbers stay
+    # (,.;: only count after a non-digit, so "1,000 men" and "3.14 " survive)
+    original = re.sub(r'(?<=[A-Za-z)”"])\d{1,3}(?=\s|$)|(?<=[A-Za-z)”"][,.;:])\d{1,3}(?=\s|$)', "", original)
     source = _letters(original)
     # curly and straight quotes are matched separately: mixing them pairs one style's opening with the other's closing
     quotes = re.findall(r"“([^“”\n]{8,400}?)”", summary) + re.findall(r"\"([^\"\n]{8,400}?)\"", summary)
@@ -51,6 +54,7 @@ def fix_format(text: str, header: str | None) -> str:
 
     text = re.sub(r"^(#{1,6} )([^a-z\n]*[A-Z]{3}[^a-z\n]*)$", title_case, text, flags=re.M)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    if header:  # the bibliographic line is imposed, not guessed by the model
-        text = re.sub(r"^\*\*.*$", lambda _: header, text, count=1, flags=re.M)
+    if header:  # the bibliographic line is imposed right after the H1; a model-written one is replaced, not duplicated
+        text = re.sub(rf"^(# .*)\n+(?:(?:\*\*[^\n]*(?: – in |pp\.)[^\n]*|{re.escape(header)})\n+)?", lambda m: f"{m.group(1)}\n\n{header}\n\n",
+                      text, count=1, flags=re.M)
     return text.strip()

@@ -18,7 +18,7 @@ PLATFORM_RULES = """PLATFORM RULES (these override anything above if they confli
 - Language: {language}.
 - Length: about {length} of the original length.
 - Start with a level-1 heading (# ) with the chapter/article title.
-- If the user message gives a bibliographic line, copy it exactly under the title.
+- Do NOT write a bibliographic or author line under the title: the platform adds it.
 - Names, dates, numbers and quotations must match the original text exactly. Never invent facts or citations."""
 
 

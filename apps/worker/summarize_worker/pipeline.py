@@ -26,6 +26,16 @@ def _call(phase: Phase, prompt: str, **kw) -> str:
                       token_param=p.token_param if p else "max_tokens", limiter=limiter_for(p) if p else None, **kw)
 
 
+def recorder(on_call: Callable[[dict], None] | None, phase: str, target: Phase, chapter: int):
+    """call_model's on_call callback that reports one LlmCall record; None when nobody listens."""
+    if not on_call:
+        return None
+    return lambda tin, tout, ms, ok: on_call({"phase": phase, "chapter": chapter, "model": target.entry.model,
+                                              "provider": target.entry.provider, "modelId": target.entry.id,
+                                              "inputTokens": tin, "outputTokens": tout,
+                                              "durationMs": ms, "ok": ok})
+
+
 def _header(line: str | None, chapter: Chapter) -> str | None:
     if not line:
         return None
@@ -51,7 +61,7 @@ def verify_prompt(original: str, draft: str) -> str:
 
 
 def prompts_dump(draft: Phase, verify: Phase | None, chapters: list[Chapter], instructions: str, *,
-                 length_percent: int, bibliographic_line: str | None) -> str:
+                 length_percent: int, bibliographic_line: str | None, judge: Phase | None = None) -> str:
     """Every message the run sends, built by the same functions as the real calls, with the chapter and
     draft texts replaced by placeholders so the file stays small."""
     n = len(chapters)
@@ -67,6 +77,13 @@ def prompts_dump(draft: Phase, verify: Phase | None, chapters: list[Chapter], in
         parts.append(f"=== FACT-CHECK \u00b7 model {verify.entry.id} ===\n[system]\n{VERIFY_INSTRUCTIONS}")
         for i, c in enumerate(chapters):
             parts.append(f'[user \u00b7 chapter {i + 1}/{n} "{c.title}"]\n' + verify_prompt(*placeholders(i, c)))
+    if judge is not None:
+        from .judge import JUDGE_INSTRUCTIONS, judge_prompt  # lazy: judge imports this module
+        parts.append(f"=== JUDGE · model {judge.entry.id} ===\n[system]\n{JUDGE_INSTRUCTIONS}")
+        for i, c in enumerate(chapters):
+            original, summary = placeholders(i, c)
+            parts.append(f'[user · chapter {i + 1}/{n} "{c.title}"]\n'
+                         + judge_prompt(original, summary, c.words * length_percent // 100, "<<actual words>>"))
     return "\n\n".join(parts) + "\n"
 
 
@@ -74,8 +91,8 @@ def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str,
                        bibliographic_line: str | None, verify: Phase | None = None,
                        on_progress: Callable[[int, str], None] | None = None,
                        usage: Usage | None = None,
-                       on_call: Callable[[dict], None] | None = None) -> tuple[str, list[str]]:
-    """Returns the whole Markdown and the check warnings. verify=None skips the fact-check.
+                       on_call: Callable[[dict], None] | None = None) -> tuple[str, list[str], list[str]]:
+    """Returns the whole Markdown, the check warnings and the per-chapter summaries. verify=None skips the fact-check.
     on_progress(percent 0-99, phase)."""
     phases = 2 if verify is not None else 1
     steps = len(chapters) * phases
@@ -89,14 +106,6 @@ def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str,
                 on_progress(int((step + share) / steps * 100), phase)
         return update
 
-    def recorder(phase: str, target: Phase, chapter: int):
-        if not on_call:
-            return None
-        return lambda tin, tout, ms, ok: on_call({"phase": phase, "chapter": chapter, "model": target.entry.model,
-                                                  "provider": target.entry.provider, "modelId": target.entry.id,
-                                                  "inputTokens": tin, "outputTokens": tout,
-                                                  "durationMs": ms, "ok": ok})
-
     for i, chapter in enumerate(chapters):
         label = f"Chapter {i + 1}/{len(chapters)}"
         header = _header(bibliographic_line, chapter)
@@ -105,18 +114,18 @@ def summarize_chapters(draft: Phase, chapters: list[Chapter], instructions: str,
         step = i * phases
         log.info(f"{label}: draft")
         text = fix_format(_call(draft, prompt, system=instructions, usage=usage,
-                                on_call=recorder("draft", draft, i),
+                                on_call=recorder(on_call, "draft", draft, i),
                                 on_tokens=progress(step, f"{label}: draft", target)), header)
         if verify is not None:
             log.info(f"{label}: fact-check")
             checked = _call(verify,
                             verify_prompt(chapter.text, text),
                             system=VERIFY_INSTRUCTIONS, usage=usage,
-                            on_call=recorder("verify", verify, i),
+                            on_call=recorder(on_call, "verify", verify, i),
                             on_tokens=progress(step + 1, f"{label}: fact-check", len(text.split())))
             # ponytail: a much shorter answer is a refusal or a truncation, so the draft is kept
             if len(checked.split()) > 0.7 * len(text.split()):
                 text = fix_format(checked, header)
         warnings += [f"chapter {i + 1}: {w}" for w in run_checks(text, chapter.text, length_percent)]
         summaries.append(text)
-    return "\n\n---\n\n".join(summaries) + "\n", warnings
+    return "\n\n---\n\n".join(summaries) + "\n", warnings, summaries

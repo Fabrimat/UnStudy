@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma.service';
 import { labPromptKey, labSourceKey, StorageService } from '../storage/storage.service';
 import { CreateBenchmarkDto, ListBenchmarksDto } from './admin.dto';
 import { zip } from '../zip';
-import { jobCost, usageByJob } from './usage';
+import { jobCost, tokensCost, usageByJob } from './usage';
 
 // A catalogue entry may have been removed since the run: show the bare id, cost stays unknown.
 const modelView = (e: ModelEntry | undefined, id: string) => {
@@ -32,6 +32,7 @@ export class BenchmarksService {
     for (const l of dto.lanes) {
       for (const id of l.verify === null ? [l.draft] : [l.draft, l.verify]) picked.set(id, await this.catalog.labModel(id));
     }
+    if (dto.judge) await this.catalog.labModel(dto.judge);
     let words = 0;
     const id = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
@@ -45,7 +46,7 @@ export class BenchmarksService {
         data: {
           userId: user.id,
           documentId: doc.id,
-          options: { ...(dto.name && { name: dto.name }), ...publicOptions, lanes: dto.lanes.map(({ draft, verify }) => ({ draft, verify })) },
+          options: { ...(dto.name && { name: dto.name }), ...publicOptions, ...(dto.judge && { judge: dto.judge }), lanes: dto.lanes.map(({ draft, verify }) => ({ draft, verify })) },
         },
       });
       // Free and unmetered: credits 0, no ledger rows; benchmark jobs are skipped by the MAX_ACTIVE_SUMMARIES count.
@@ -57,7 +58,7 @@ export class BenchmarksService {
             kind: 'summarize',
             credits: 0,
             benchmarkId: bench.id,
-            options: settings.build({ modelId: l.draft, model: picked.get(l.draft)!.model, phaseModels: { draft: l.draft, verify: l.verify }, lane }),
+            options: settings.build({ modelId: l.draft, model: picked.get(l.draft)!.model, phaseModels: { draft: l.draft, verify: l.verify }, lane, ...(dto.judge && { judge: dto.judge }) }),
           },
         });
       }
@@ -106,10 +107,11 @@ export class BenchmarksService {
     const usages = await usageByJob(this.prisma, jobIds);
     const lanes = b.jobs
       .map((j) => {
-        const o = j.options as { lane?: number; modelId?: string; phaseModels?: Lane };
+        const o = j.options as { lane?: number; modelId?: string; phaseModels?: Lane; judge?: string };
         const pm: Lane = o.phaseModels ?? { draft: o.modelId ?? '', verify: null };
         const usage = usages.get(j.id)!;
         const costUsd = jobCost(usage, { draft: entryOf(pm.draft), verify: pm.verify ? entryOf(pm.verify) : undefined });
+        const judgeCostUsd = usage.judge.calls ? tokensCost(o.judge ? entryOf(o.judge) : undefined, usage.judge.inputTokens, usage.judge.outputTokens) : 0;
         return {
           index: o.lane ?? 0,
           jobId: j.id,
@@ -125,6 +127,8 @@ export class BenchmarksService {
           warnings: Array.isArray(j.warnings) ? (j.warnings as string[]) : [],
           usage,
           costUsd,
+          judgeCostUsd,
+          evaluation: j.evaluation ?? null,
         };
       })
       .sort((a, c) => a.index - c.index);

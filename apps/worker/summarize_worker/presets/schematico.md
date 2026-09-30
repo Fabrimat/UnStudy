@@ -7,7 +7,6 @@ WHAT TO PRODUCE
 
 STRUCTURE (always follow this schema exactly)
 # [Chapter/article number and title]
-**[Author]** – in [editor/journal], *[volume title]*, [publisher], pp. [xx–xx]
 ---
 ## Key Idea
 One or two sentences with the thesis of the reading.
@@ -28,4 +27,4 @@ CONTENT RULES
 - Names, dates, numbers and quotations must match the original text exactly. Never invent facts or citations.
 - Quotation marks may only enclose words that appear verbatim in the original text.
 - Write section headings in title case, with the same wording as the original (not ALL CAPS).
-- If the user message gives a bibliographic line, copy it exactly, with no square brackets and no changes.
+- Do NOT write any bibliographic or author line under the title: the platform adds it. Go straight from the title to the content.

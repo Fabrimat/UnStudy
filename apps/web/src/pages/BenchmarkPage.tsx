@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router';
-import { api, ApiError, BenchmarkDetail, lengthLabel, Lane, laneActive, LANGUAGES, methodLabel, PhaseUsage, useMethods } from '../api';
+import { api, ApiError, BenchmarkDetail, lengthLabel, Lane, laneActive, LANGUAGES, methodLabel, PhaseUsage, Scores, useMethods } from '../api';
 import { fmt, t } from '../i18n';
 
 const fmtDuration = (ms: number | null) => {
@@ -12,6 +12,8 @@ const fmtDuration = (ms: number | null) => {
 };
 const fmtCost = (c: number | null) => (c === null ? '—' : c < 0.01 ? `$${c.toFixed(4)}` : `$${c.toFixed(2)}`);
 const fmtTok = (n: number) => (n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const f1 = (n: number) => n.toFixed(1);
+const scoreLine = (s: Scores) => t('benchmark.scoreLine', { accuracy: f1(s.accuracy), coverage: f1(s.coverage), concision: f1(s.concision), structure: f1(s.structure) });
 const laneLabel = (l: Lane) => `#${l.index + 1}`;
 
 export default function BenchmarkPage() {
@@ -136,7 +138,7 @@ function MetricsTable({ lanes }: { lanes: Lane[] }) {
       <table className="w-full text-left text-sm">
         <thead className="bg-gray-100 text-xs uppercase text-gray-600">
           <tr>
-            {[t('benchmark.colLane'), t('benchmark.colDraft'), t('benchmark.colFactCheck'), t('common.status'), t('benchmark.colTime'), t('benchmark.colDraftTok'), t('benchmark.colCheckTok'), t('benchmark.colCost'), t('benchmark.colWarn')].map((h) => <th key={h} className="whitespace-nowrap px-3 py-2">{h}</th>)}
+            {[t('benchmark.colLane'), t('benchmark.colDraft'), t('benchmark.colFactCheck'), t('common.status'), t('benchmark.colTime'), t('benchmark.colDraftTok'), t('benchmark.colCheckTok'), t('benchmark.colCost'), t('benchmark.colScore'), t('benchmark.colWarn')].map((h) => <th key={h} className="whitespace-nowrap px-3 py-2">{h}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -154,15 +156,29 @@ function MetricsTable({ lanes }: { lanes: Lane[] }) {
               <td className="whitespace-nowrap px-3 py-2 font-mono">{usageText(l.usage.verify, l.verify !== null)}</td>
               <td className={`whitespace-nowrap px-3 py-2 font-mono ${l.status === 'done' && l.costUsd !== null && l.costUsd === cheapest && priced.length > 1 ? best : ''}`}>
                 {fmtCost(l.costUsd)}
+                {l.judgeCostUsd !== null && l.judgeCostUsd > 0 && <span className="block text-xs font-normal text-gray-600">{t('benchmark.judgeCost', { cost: fmtCost(l.judgeCostUsd) })}</span>}
                 {l.status === 'done' && l.costUsd !== null && l.costUsd === cheapest && priced.length > 1 && ' ★'}
               </td>
+              <td className="whitespace-nowrap px-3 py-2"><ScoreCell lane={l} /></td>
               <td className="px-3 py-2 font-mono">{l.warnings.length}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="border-t px-3 py-1 text-xs text-gray-500">{t('benchmark.legend')}</p>
+      <p className="border-t px-3 py-1 text-xs text-gray-500">{t('benchmark.legend')} {t('benchmark.scoreLegend')}</p>
     </div>
+  );
+}
+
+function ScoreCell({ lane: l }: { lane: Lane }) {
+  const ev = l.evaluation;
+  if (!ev) return <span className="text-gray-500">—</span>;
+  if (!ev.scores || ev.overall === null) return <span className="text-xs text-gray-500" title={ev.error ?? undefined}>{t('benchmark.judgeFailed', { error: ev.error ?? '' })}</span>;
+  return (
+    <>
+      <div className="font-mono font-semibold">{f1(ev.overall)}</div>
+      <div className="font-mono text-xs text-gray-600">{scoreLine(ev.scores)}</div>
+    </>
   );
 }
 
@@ -221,6 +237,20 @@ function LaneOutput({ lane: l }: { lane: Lane }) {
         <details className="text-sm">
           <summary className="cursor-pointer text-amber-700">{t(l.warnings.length === 1 ? 'benchmark.warningOne' : 'benchmark.warningOther', { n: l.warnings.length })}</summary>
           <ul className="mt-1 list-disc space-y-1 pl-5 text-xs">{l.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </details>
+      )}
+      {l.evaluation && (
+        <details className="text-sm">
+          <summary className="cursor-pointer">{t('benchmark.evalDetails')} · {t('benchmark.judgeNote', { judge: l.evaluation.judge })}</summary>
+          {l.evaluation.error && <p className="mt-1 text-xs text-gray-500">{t('benchmark.judgeFailed', { error: l.evaluation.error })}</p>}
+          <ul className="mt-1 space-y-1 text-xs">
+            {l.evaluation.chapters.map((c) => (
+              <li key={c.index}>
+                <span className="font-medium">{t('benchmark.chapterScores', { title: c.title, scores: c.scores ? scoreLine(c.scores) : t('benchmark.noScore') })}</span>
+                {c.issues.length > 0 && <ul className="list-disc pl-5 text-gray-600">{c.issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+              </li>
+            ))}
+          </ul>
         </details>
       )}
       {done && content.error && <p className="text-sm text-red-600">{content.error.message}</p>}

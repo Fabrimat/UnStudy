@@ -107,19 +107,20 @@ def calls(monkeypatch):
     calls = []
     monkeypatch.setattr(handlers, "read_chapters", lambda *a, **k: (CHAPTERS, 3, False))
     monkeypatch.setattr(handlers, "load_pdf", lambda *a: b"")
-    monkeypatch.setattr(handlers, "summarize_chapters", lambda *a, **k: ("# md", []))
+    monkeypatch.setattr(handlers, "summarize_chapters", lambda *a, **k: ("# md", [], ["s1", "s2"]))
     monkeypatch.setattr(handlers, "to_docx", lambda md: b"docx")
     monkeypatch.setattr(handlers.db, "get_document", lambda *a: DOC)
-    for name in ("progress", "record_call", "finish_analyze", "finish_summary"):
+    for name in ("progress", "record_call", "finish_analyze", "finish_summary", "save_evaluation"):
         monkeypatch.setattr(handlers.db, name, lambda *a, _n=name, **k: calls.append(_n))
     return calls
 
 
-def run_summarize(storage, job, options=None, verify=None):
+def run_summarize(storage, job, options=None, verify=None, models=None):
     job = {**job, "options": {"language": "en", "preset": "abstract", "lengthPercent": 20, **(options or {})}}
     handlers.handle_summarize(None, storage, SimpleNamespace(ocr_langs=None, providers=[SimpleNamespace(id="default")]),
                               {"default": None}, job,
-                              SimpleNamespace(model="m", id="m", provider="default", temperature=None), verify)
+                              SimpleNamespace(model="m", id="m", provider="default", temperature=None), verify,
+                              models=models)
 
 
 def test_lab_lane_writes_whole_source_text(calls):
@@ -157,3 +158,85 @@ def test_normal_summarize_writes_no_prompts(calls):
     st = FakeStorage()
     run_summarize(st, JOB)
     assert not any("prompts" in k for k in st.puts)
+
+
+# --- Lab judge ---
+JUDGE = SimpleNamespace(model="j", id="j", provider="default", temperature=None, admin_only=True)
+
+
+@pytest.fixture
+def judged(calls, monkeypatch):
+    seen = []
+
+    def fake_evaluate(phase, chapters, summaries, pct, **kw):
+        seen.append((phase.entry.id, summaries, pct))
+        return {"judge": "j", "overall": 7.0, "scores": {}, "chapters": [], "error": None}
+    monkeypatch.setattr(handlers, "evaluate", fake_evaluate)
+    monkeypatch.setattr(handlers.db, "save_evaluation", lambda conn, job, ev: calls.append(("evaluation", ev)))
+    return seen
+
+
+def test_lab_lane_with_judge_stores_evaluation_before_done(calls, judged):
+    st = FakeStorage()
+    run_summarize(st, LAB_JOB, {"judge": "j"}, models=[JUDGE])
+    assert judged == [("j", ["s1", "s2"], 20)]
+    names = [c if isinstance(c, str) else c[0] for c in calls]
+    assert names.index("evaluation") < names.index("finish_summary")
+    assert "=== JUDGE · model j ===" in st.puts["users/u1/lab/b1/prompts/j1.txt"][0].decode()
+
+
+def test_no_judge_without_benchmark_or_option(calls, judged):
+    run_summarize(FakeStorage(), JOB, {"judge": "j"}, models=[JUDGE])
+    run_summarize(FakeStorage(), LAB_JOB, models=[JUDGE])
+    assert judged == [] and "evaluation" not in [c if isinstance(c, str) else c[0] for c in calls]
+
+
+def test_unknown_judge_model_only_sets_evaluation_error(calls, judged):
+    run_summarize(FakeStorage(), LAB_JOB, {"judge": "ghost"}, models=[JUDGE])
+    ev = next(c[1] for c in calls if not isinstance(c, str))
+    assert judged == [] and "ghost" in ev["error"] and ev["overall"] is None and "finish_summary" in calls
+
+
+def test_judge_crash_does_not_fail_the_lane(calls, monkeypatch):
+    monkeypatch.setattr(handlers.db, "save_evaluation", lambda conn, job, ev: calls.append(("evaluation", ev)))
+    monkeypatch.setattr(handlers, "evaluate", lambda *a, **k: 1 / 0)
+    run_summarize(FakeStorage(), LAB_JOB, {"judge": "j"}, models=[JUDGE])
+    assert "finish_summary" in calls and any(c[0] == "evaluation" and "ZeroDivisionError" in c[1]["error"]
+                                              for c in calls if not isinstance(c, str))
+
+def test_matter_is_dropped_after_fingerprint_and_selection(calls, monkeypatch):
+    # an outline with a short "Contents" entry: the fingerprint counts it, the model never sees it
+    chaps = [Chapter("Contents", 1, 1, "a " * 20), Chapter("One", 2, 3, "b " * 400)]
+    monkeypatch.setattr(handlers, "read_chapters", lambda *a, **k: (chaps, 3, False))
+    monkeypatch.setattr(handlers.db, "get_document", lambda *a: {**DOC, "words": 420, "chapters": [{}, {}]})
+    seen = []
+    monkeypatch.setattr(handlers, "summarize_chapters", lambda draft, cs, *a, **k: seen.append(cs) or ("# md", [], ["s"]))
+    run_summarize(FakeStorage(), JOB)
+    assert [[c.title for c in cs] for cs in seen] == [["One"]] and "finish_summary" in calls
+
+
+def test_explicit_selection_keeps_short_chapters(calls, monkeypatch):
+    chaps = [Chapter("Prologue", 1, 1, "a " * 20), Chapter("One", 2, 3, "b " * 400)]
+    monkeypatch.setattr(handlers, "read_chapters", lambda *a, **k: (chaps, 3, False))
+    monkeypatch.setattr(handlers.db, "get_document", lambda *a: {**DOC, "words": 420, "chapters": [{}, {}]})
+    seen = []
+    monkeypatch.setattr(handlers, "summarize_chapters", lambda draft, cs, *a, **k: seen.append(cs) or ("# md", [], ["s", "s"]))
+    run_summarize(FakeStorage(), JOB, {"chapters": [0, 1]})
+    assert [c.title for c in seen[0]] == ["Prologue", "One"]
+
+
+def test_duration_excludes_the_judge(calls, monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(handlers, "time", SimpleNamespace(monotonic=lambda: now[0]))
+    monkeypatch.setattr(handlers.db, "save_evaluation", lambda *a: None)
+
+    def slow_judge(*a, **k):
+        now[0] += 100
+        return {"judge": "j", "overall": None, "scores": None, "chapters": [], "error": None}
+    monkeypatch.setattr(handlers, "evaluate", slow_judge)
+    monkeypatch.setattr(handlers, "summarize_chapters", lambda *a, **k: (now.__setitem__(0, 5.0), ("# md", [], ["s1", "s2"]))[1])
+    got = {}
+    monkeypatch.setattr(handlers.db, "finish_summary", lambda *a, **k: got.update(k))
+    run_summarize(FakeStorage(), LAB_JOB, {"judge": "j"}, models=[JUDGE])
+    assert got["duration_ms"] == 5000
+

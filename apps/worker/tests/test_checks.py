@@ -38,3 +38,30 @@ def test_length_target_follows_length_percent():
     original = "word " * 1000
     assert run_checks("x " * 200, original, length_percent=20) == []
     assert [p.split()[0] for p in run_checks("x " * 200, original, length_percent=33)] == ["length"]
+
+
+def test_fix_format_inserts_header_after_h1_and_replaces_model_written_line():
+    h = "**A** – *B*, pp. 9–29"
+    assert fix_format("# T\n\n## Intro\ntext", h) == f"# T\n\n{h}\n\n## Intro\n\ntext"
+    assert fix_format("# T\n**Smith** – in Book, pp. 1–2\n## Intro\ntext", h) == f"# T\n\n{h}\n\n## Intro\n\ntext"
+    assert fix_format("# T\n## Intro\ntext", None) == "# T\n\n## Intro\n\ntext"
+
+
+def test_glued_footnote_markers_do_not_break_quotes_but_invented_ones_still_flag():
+    pdf = "The Prime Minister,3 the Council and its members.12 Later in 1970 the cabinet fell. " * 40
+    ok = 'He wrote "the Prime Minister, the Council and its members. Later in 1970 the cabinet fell".'
+    assert not any("quote" in p for p in run_checks(ok, pdf))
+    assert any("quote" in p for p in run_checks('He wrote "a completely invented sentence about nothing at all".', pdf))
+    # standalone numbers (years) are kept: a quote with a different number still fails
+    assert any("quote" in p for p in run_checks('He wrote "Later in 1 the cabinet fell and the Council met twice".', pdf))
+
+
+def test_thousands_and_decimals_are_not_mistaken_for_footnotes():
+    pdf = "There were 1,000 men and a ratio of 3.14 to one in the field. " * 40
+    assert not any("quote" in p for p in run_checks('It says "there were 1,000 men and a ratio of 3.14 to one".', pdf))
+
+
+def test_fix_format_is_idempotent_with_a_header_lacking_in_and_pp():
+    h = "**Smith** – *Book*, p. 5"
+    once = fix_format("# T\n## Intro\ntext", h)
+    assert fix_format(once, h) == once and once.count(h) == 1

@@ -38,7 +38,7 @@ class FlakyClient:
 def test_each_chapter_gets_a_draft_and_a_fact_check():
     client, progress, usage = FakeClient(), [], Usage()
     chapters = [Chapter("A", 9, 29, "alpha " * 300), Chapter("B", 30, 30, "beta " * 300)]
-    md, warnings = summarize_chapters(_phase(client), chapters, "SYSTEM", length_percent=33, verify=_phase(client),
+    md, warnings, summaries = summarize_chapters(_phase(client), chapters, "SYSTEM", length_percent=33, verify=_phase(client),
                                       bibliographic_line="**Lijphart** – *Patterns*",
                                       on_progress=lambda p, ph: progress.append((p, ph)), usage=usage)
     assert len(client.calls) == 4
@@ -52,11 +52,12 @@ def test_each_chapter_gets_a_draft_and_a_fact_check():
     assert percents == sorted(percents) and all(0 <= p < 100 for p in percents)
     assert any(ph == "Chapter 2/2: fact-check" for _, ph in progress)
     assert all(w.startswith("chapter ") for w in warnings)
+    assert len(summaries) == 2 and "\n\n---\n\n".join(summaries) + "\n" == md
 
 
 def test_a_too_short_fact_check_keeps_the_draft():
     client = FakeClient(replies=[DEFAULT_REPLY, "Sorry, I cannot help."])
-    md, _ = summarize_chapters(_phase(client), [Chapter("A", None, None, "alpha " * 300)], "S", verify=_phase(client),
+    md, _, _ = summarize_chapters(_phase(client), [Chapter("A", None, None, "alpha " * 300)], "S", verify=_phase(client),
                                length_percent=33, bibliographic_line="**A** – *B*")
     assert "Fake Summary" in md and "Sorry" not in md
     assert "**A** – *B*\n" in md  # no page range known

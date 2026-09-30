@@ -155,6 +155,8 @@ model Job {
   durationMs    Int?
   resultMdKey   String?
   resultDocxKey String?
+  /// Lab only: the judge's scores (see Evaluation), null when no judge or not yet judged
+  evaluation    Json?
   /// user-safe message only
   error         String?
   createdAt     DateTime       @default(now())
@@ -174,6 +176,7 @@ model Job {
 enum LlmPhase {
   draft
   verify
+  judge
 }
 
 /// One row per model call, written right after the call (failed attempts included). Internal only.

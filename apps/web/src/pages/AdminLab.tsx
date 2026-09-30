@@ -51,6 +51,7 @@ function NewRun() {
   const [extras, setExtras] = useState<Extra[]>([]);
   const [bibliographicLine, setBib] = useState('');
   const [chapters, setChapters] = useState<number[] | null>(null); // null = all
+  const [judge, setJudge] = useState('none');
   const [lanes, setLanes] = useState<LaneDraft[]>([]);
 
   const chapterList = doc?.chapters ?? [];
@@ -72,6 +73,7 @@ function NewRun() {
           ...(allSelected ? {} : { chapters: [...selected].sort((a, b) => a - b) }),
           ...(extras.length ? { extras } : {}),
           ...(bibliographicLine.trim() ? { bibliographicLine: bibliographicLine.trim() } : {}),
+          ...(judge !== 'none' ? { judge } : {}),
           lanes: shown.map(toSpec),
         }),
       }),
@@ -143,6 +145,10 @@ function NewRun() {
         {t('common.bibLine')}
         <input maxLength={300} value={bibliographicLine} onChange={(e) => setBib(e.target.value)} className="mt-1 w-full rounded border bg-white p-2" />
       </label>
+
+      <div className="sm:w-1/2">
+        <Select label={t('adminLab.judgeModel')} value={judge} onChange={setJudge} options={[['none', t('adminLab.noJudge')], ...modelOpts]} />
+      </div>
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">

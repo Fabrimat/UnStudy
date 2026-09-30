@@ -2,9 +2,9 @@ import { ModelEntry } from '../config';
 import { PrismaService } from '../prisma.service';
 
 export type Usage = { calls: number; inputTokens: number; outputTokens: number; durationMs: number; failedCalls: number };
-export type JobUsage = { draft: Usage; verify: Usage };
+export type JobUsage = { draft: Usage; verify: Usage; judge: Usage };
 export const emptyUsage = (): Usage => ({ calls: 0, inputTokens: 0, outputTokens: 0, durationMs: 0, failedCalls: 0 });
-export const PHASES = ['draft', 'verify'] as const;
+export const PHASES = ['draft', 'verify'] as const; // cost phases; judge is priced separately
 
 // LlmCall rows aggregated per job and phase (jobs without calls get zeros).
 export async function usageByJob(prisma: PrismaService, jobIds: string[]): Promise<Map<string, JobUsage>> {
@@ -18,7 +18,7 @@ export async function usageByJob(prisma: PrismaService, jobIds: string[]): Promi
       _count: { _all: true },
     }),
   ]);
-  const out = new Map(jobIds.map((id) => [id, { draft: emptyUsage(), verify: emptyUsage() }]));
+  const out = new Map(jobIds.map((id) => [id, { draft: emptyUsage(), verify: emptyUsage(), judge: emptyUsage() }]));
   for (const r of all) {
     out.get(r.jobId)![r.phase] = {
       calls: (r._count as { _all: number })._all,
@@ -38,7 +38,7 @@ export function tokensCost(entry: Pick<ModelEntry, 'priceIn' | 'priceOut'> | und
 }
 
 // null as soon as a phase that made calls has no prices
-export function jobCost(usage: JobUsage, entries: { draft?: ModelEntry; verify?: ModelEntry }): number | null {
+export function jobCost(usage: Pick<JobUsage, typeof PHASES[number]>, entries: { draft?: ModelEntry; verify?: ModelEntry }): number | null {
   let costUsd: number | null = 0;
   for (const ph of PHASES) {
     if (!usage[ph].calls) continue;

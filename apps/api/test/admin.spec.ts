@@ -168,6 +168,25 @@ describe('admin lab', () => {
     expect(lanes[1].costUsd).toBeNull(); // 'lab' has no prices
   });
 
+  it('stores an optional judge in benchmark and job options, validates it, and returns evaluation + judge cost', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: [LANES[1]], judge: 'fast' }).expect(201);
+    expect(res.body.options.judge).toBe('fast');
+    const [job] = await prisma.job.findMany({ where: { benchmarkId: res.body.id } });
+    expect(job.options).toMatchObject({ judge: 'fast' });
+    expect(res.body.lanes[0]).toMatchObject({ evaluation: null, judgeCostUsd: 0 });
+    const evaluation = { judge: 'fast', overall: 7.5, scores: { accuracy: 8, coverage: 7, concision: 7, structure: 8 }, chapters: [], error: null };
+    await prisma.job.update({ where: { id: job.id }, data: { evaluation } });
+    await prisma.llmCall.create({ data: { jobId: job.id, attempt: 1, chapter: 0, phase: 'judge', model: 'p/fast', modelId: 'fast', inputTokens: 1_000_000, outputTokens: 500_000, durationMs: 100, ok: true } });
+    const lane = (await http().get(`/api/admin/benchmarks/${res.body.id}`).set('Cookie', a.cookie).expect(200)).body.lanes[0];
+    expect(lane.evaluation).toEqual(evaluation);
+    expect(lane.usage.judge).toMatchObject({ calls: 1 });
+    expect(lane.judgeCostUsd).toBeCloseTo(2); // fast: 1 in + 0.5 * 2 out
+    expect(lane.costUsd).toBe(0); // judge not counted in lane cost
+    await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: [LANES[1]], judge: 'nope' }).expect(400);
+  });
+
   it('renames a benchmark, even while running; rejects multi-line names and other callers', async () => {
     const a = await admin();
     const d = await doc(a.user.id);

@@ -7,7 +7,6 @@ WHAT TO PRODUCE
 
 STRUCTURE (always follow this schema exactly)
 # [Chapter/article number and title]
-**[Author]** – in [editor/journal], *[volume title]*, [publisher], pp. [xx–xx]
 ---
 ## Introduction
 One paragraph with the thesis and central themes of the reading.
@@ -33,4 +32,4 @@ CONTENT RULES
 - Quotation marks may only enclose words that appear verbatim in the original text. Never put paraphrases or labels of your own in quotation marks.
 - Write section headings in title case, with the same wording as the original (not ALL CAPS).
 - When the author numbers elements (e.g. "1. Concentration of executive power..."), keep exactly the author's numbering and grouping (e.g. "6–10." if the author groups them).
-- If the user message gives a bibliographic line, copy it exactly, with no square brackets and no changes.
+- Do NOT write any bibliographic or author line under the title: the platform adds it. Go straight from the title to the content.

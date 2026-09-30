@@ -1,7 +1,7 @@
 import fitz
 import pytest
 
-from summarize_worker.text import clean_pages, extract_pages, inspect_pdf, ocr_dpi, split_chapters
+from summarize_worker.text import Chapter, clean_pages, drop_matter, extract_pages, inspect_pdf, ocr_dpi, split_chapters
 from tests.pdfs import make_pdf
 
 
@@ -94,3 +94,38 @@ def test_chapters_text_headers_and_separator():
     from summarize_worker.text import Chapter, chapters_text
     out = chapters_text([Chapter("One", 1, 3, "a b"), Chapter("Two", None, None, "c")])
     assert out == "=== One (pp. 1\u20133) ===\na b\n\n=== Two ===\nc"
+
+
+def _chs(*spec):
+    return [Chapter(t, None, None, " ".join(["word"] * n)) for t, n in spec]
+
+
+def _titles(chapters):
+    return [c.title for c in drop_matter(chapters)]
+
+
+def test_split_chapters_does_not_drop_matter():
+    pages = [" ".join(["word"] * 250), " ".join(["word"] * 150), " ".join(["word"] * 400)]
+    toc = [[1, "Title", 1], [1, "Contents", 2], [1, "Chapter 2", 3]]
+    assert [c.title for c in split_chapters(pages, toc)] == ["Title", "Contents", "Chapter 2"]
+
+
+def test_drop_matter_front_and_back():
+    assert _titles(_chs(("Patterns of Democracy", 250), ("Contents", 150), ("Chapter 2", 400), ("Chapter 3", 500))) ==         ["Chapter 2", "Chapter 3"]
+    assert _titles(_chs(("Chapter 2", 400), ("Indice analitico", 900), ("Chapter 3", 400), ("Note", 50))) ==         ["Chapter 2", "Chapter 3"]
+
+
+def test_drop_matter_keeps_short_abstract_conclusion_and_middle_chapters():
+    assert _titles(_chs(("Abstract", 180), ("1. Introduction", 2000), ("2. Method", 2000), ("3. Conclusion", 240),
+                        ("Acknowledgments", 100), ("References", 800))) ==         ["Abstract", "1. Introduction", "2. Method", "3. Conclusion"]
+    assert _titles(_chs(("One", 2000), ("Interlude", 250), ("Two", 2000))) == ["One", "Interlude", "Two"]
+
+
+def test_drop_matter_never_returns_empty():
+    chs = _chs(("Contents", 100), ("Two", 50))
+    assert drop_matter(chs) == chs
+
+
+def test_drop_matter_matches_cap_renamed_parts():
+    assert _titles(_chs(("Chapter 2", 400), ("Chapter 3", 400), ("Notes (part 1/2)", 900), ("Notes (part 2/2)", 900))) == \
+        ["Chapter 2", "Chapter 3"]

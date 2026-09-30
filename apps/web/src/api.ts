@@ -15,11 +15,17 @@ export type AdminModel = {
 };
 export type LaneModel = { modelId: string; label: string; provider: string; model: string };
 export type PhaseUsage = { calls: number; inputTokens: number; outputTokens: number; durationMs: number; failedCalls: number };
+export type Scores = { accuracy: number; coverage: number; concision: number; structure: number };
+export type Evaluation = {
+  judge: string; overall: number | null; scores: Scores | null; error: string | null;
+  chapters: { index: number; title: string; scores: Scores | null; issues: string[] }[];
+};
 export type Lane = {
   index: number; jobId: string; draft: LaneModel; verify: LaneModel | null;
   status: JobStatus; progress: number; phase: string; error: string | null;
   durationMs: number | null; createdAt: string; finishedAt: string | null; warnings: string[];
-  usage: { draft: PhaseUsage; verify: PhaseUsage }; costUsd: number | null;
+  usage: { draft: PhaseUsage; verify: PhaseUsage; judge: PhaseUsage }; costUsd: number | null;
+  judgeCostUsd: number | null; evaluation: Evaluation | null;
 };
 export type BenchmarkSummary = {
   id: string; name: string | null; createdAt: string; document: { id: string; filename: string };

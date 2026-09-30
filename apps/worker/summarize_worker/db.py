@@ -94,6 +94,16 @@ def finish_summary(conn, job: dict, *, md_key: str, docx_key: str, warnings: lis
                             VALUES (%s, 'charge', 0, %s) ON CONFLICT DO NOTHING""", (job["userId"], job["id"]))
 
 
+def save_evaluation(conn, job: dict, evaluation: dict) -> None:
+    """Lab judge scores, written before the job is marked done. An old DB without the column is only a warning."""
+    try:
+        conn.execute('UPDATE "Job" SET evaluation = %s WHERE id = %s AND attempts = %s',
+                     (Jsonb(evaluation), job["id"], job["attempts"]))
+    except psycopg.errors.UndefinedColumn:
+        conn.rollback()
+        log.warning('column "Job".evaluation is missing (API migration not applied yet), evaluation not saved')
+
+
 def _fail(conn, job_id, attempts: int | None = None, model: str | None = None) -> None:
     # attempts=None (recover_stale): the row is already locked FOR UPDATE and its own current
     # attempts was just read in the same transaction, so no fencing is needed there.

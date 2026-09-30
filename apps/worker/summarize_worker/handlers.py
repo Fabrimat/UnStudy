@@ -3,10 +3,11 @@ import time
 
 from . import db
 from .docx import to_docx
+from .judge import evaluate
 from .llm import Usage
 from .pipeline import Phase, prompts_dump, summarize_chapters
 from .prompts import length_percent, render_custom, render_instructions
-from .text import Chapter, chapters_text, clean_pages, extract_pages, inspect_pdf, split_chapters
+from .text import Chapter, chapters_text, clean_pages, drop_matter, extract_pages, inspect_pdf, split_chapters
 
 MAX_BYTES = 50 * 1024 * 1024
 MAX_PAGES = 400
@@ -117,7 +118,8 @@ def handle_analyze(conn, storage, settings, job: dict) -> None:
     log.info(f"analyze job {job['id']} succeeded in {time.monotonic() - start:.1f}s")
 
 
-def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_entry, verify_entry, providers=None) -> None:
+def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_entry, verify_entry, providers=None,
+                     models=None) -> None:
     start = time.monotonic()
     doc = db.get_document(conn, job["documentId"])
     chapters, _, _ = read_chapters(load_pdf(storage, doc), settings.ocr_langs,
@@ -134,6 +136,8 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
         if not picked or not all(isinstance(i, int) and 0 <= i < len(chapters) for i in picked):
             raise FileChanged("Chapter selection does not match the document")  # the API validates this; never retry
         chapters = [chapters[i] for i in picked]
+    else:
+        chapters = drop_matter(chapters)  # only without an explicit selection: picked chapters are always summarized
     lab = job.get("benchmarkId") is not None
     if lab:
         save_lab_source(storage, job, chapters_all)
@@ -157,10 +161,19 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
     def on_call(rec: dict):
         db.record_call(conn, job, rec)  # a raising recorder is swallowed and logged by call_model
 
+    judge_id = opts.get("judge") if lab else None  # the judge only runs in Lab lanes
+    judge_phase = judge_error = None
+    if judge_id:
+        try:  # an unknown judge model must never fail the lane: it ends up in evaluation.error
+            judge_phase = phase(_entry(settings.models if models is None else models, judge_id))
+        except Exception as e:
+            log.warning(f"judge {judge_id!r} unusable for job {job['id']}: {e}")
+            judge_error = f"judge unavailable: {e}"
     if lab:
         save_lab_prompt(storage, job, prompts_dump(phase(draft_entry), phase(verify_entry), chapters, instructions,
-                                                  length_percent=percent, bibliographic_line=opts.get("bibliographicLine")))
-    markdown, warnings = summarize_chapters(
+                                                  length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
+                                                  judge=judge_phase))
+    markdown, warnings, summaries = summarize_chapters(
         phase(draft_entry), chapters, instructions, verify=phase(verify_entry),
         length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
         on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage,
@@ -169,8 +182,23 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
     prefix = f"users/{job['userId']}/results/{job['id']}"
     storage.put(f"{prefix}.md", markdown.encode("utf-8"), "text/markdown; charset=utf-8")
     storage.put(f"{prefix}.docx", to_docx(markdown), DOCX_MIME)
+    duration_ms = int((time.monotonic() - start) * 1000)  # before judging: judged and unjudged lanes stay comparable
+    if judge_id:
+        evaluation = {"judge": judge_id, "overall": None, "scores": None, "chapters": [], "error": judge_error}
+        if judge_phase:
+            try:
+                evaluation = evaluate(judge_phase, chapters, summaries, percent, usage=usage, on_call=on_call,
+                                      on_progress=lambda i, n: db.progress(conn, job["id"], 99, f"Judging chapter {i}/{n}",
+                                                                           job["attempts"]))
+            except Exception as e:  # evaluate only raises on bugs or a dead DB: still never fail the lane
+                log.warning(f"judge crashed for job {job['id']}", exc_info=True)
+                evaluation["error"] = f"judge failed: {type(e).__name__}"
+        try:
+            db.save_evaluation(conn, job, evaluation)
+        except Exception:
+            log.warning(f"could not store the evaluation of job {job['id']}", exc_info=True)
     db.finish_summary(conn, job, md_key=f"{prefix}.md", docx_key=f"{prefix}.docx", warnings=warnings,
-                      model=model, duration_ms=int((time.monotonic() - start) * 1000))
+                      model=model, duration_ms=duration_ms)
     log.info(f"summarize job {job['id']} succeeded in {time.monotonic() - start:.1f}s "
             f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
@@ -185,7 +213,7 @@ def process(conn, storage, settings, clients: dict, job: dict, models=None, prov
         if job["kind"] == "analyze":
             handle_analyze(conn, storage, settings, job)
         else:
-            handle_summarize(conn, storage, settings, clients, job, draft, verify, providers)
+            handle_summarize(conn, storage, settings, clients, job, draft, verify, providers, models)
     except UnknownModel:
         log.error(f"job {job['id']} failed (unknown model id, refunded, no retry)")
         db.fail(conn, job, None)
