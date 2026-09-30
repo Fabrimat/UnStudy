@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { ApiError, LegalKind, LegalRef, useAcceptLegal, useLegal, useMe } from '../api';
+import LangSwitch from '../LangSwitch';
 import { fmt, t } from '../i18n';
 
 const KINDS = ['terms', 'privacy'] as const;
@@ -10,6 +11,7 @@ export function LegalLinks() {
   return (
     <span className="space-x-3" aria-label={t('legal.footerLabel')}>
       {KINDS.map((k) => <Link key={k} to={`/${k}`} className="underline">{t(`legal.${k}`)}</Link>)}
+      <LangSwitch />
     </span>
   );
 }
