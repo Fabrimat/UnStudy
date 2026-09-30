@@ -15,6 +15,14 @@ DEFAULT_REPLY = ("# Fake Summary\n\n**Fake Author** – Fake Source\n\n---\n\n##
                  + "This is a generated test summary. " * 20 + "\n\n---\n\n## Conclusion\n\nEnd.")
 
 
+class EmptyReply(RuntimeError):
+    """The model streamed no content. truncated: the output cap ran out first (reasoning ate it), so a retry won't help."""
+
+    def __init__(self, truncated: bool):
+        super().__init__("empty reply" + (" (output cap reached before any text)" if truncated else ""))
+        self.truncated = truncated
+
+
 @dataclass
 class Usage:
     input_tokens: int = 0
@@ -95,7 +103,7 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
                 params["temperature"] = temperature
             with limiter or contextlib.nullcontext():  # ponytail: held for the HTTP attempt only, not the backoff
                 stream = client.chat.completions.create(model=model, messages=messages, **params)
-                parts, last, final_usage = [], 0.0, None
+                parts, last, final_usage, truncated = [], 0.0, None, False
                 for event in stream:
                     if on_tokens and time.time() - last > 2:
                         on_tokens(len("".join(parts).split()))
@@ -108,6 +116,7 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
                     if choice.delta.content:
                         parts.append(choice.delta.content)
                     if choice.finish_reason == "length":
+                        truncated = True
                         log.warning(f"output truncated at max_tokens={max_tokens}")
             tokens_in = getattr(final_usage, "prompt_tokens", 0) or 0
             tokens_out = getattr(final_usage, "completion_tokens", 0) or 0
@@ -116,10 +125,13 @@ def call_model(client, model: str, prompt: str, *, system: str = "", max_tokens:
                 usage.output_tokens += final_usage.completion_tokens or 0
             log.debug(f"llm call model={model} duration={time.time() - start:.1f}s "
                      f"in={getattr(final_usage, 'prompt_tokens', None)} out={getattr(final_usage, 'completion_tokens', None)}")
+            text = "".join(parts).strip()
+            if not text:  # never hand an empty draft downstream: the fact-check would answer "no draft provided"
+                raise EmptyReply(truncated)
             report(True)
-            return "".join(parts).strip()
+            return text
         except Exception as e:
-            if attempt == attempts - 1:
+            if attempt == attempts - 1 or (isinstance(e, EmptyReply) and e.truncated):
                 report(False)
                 raise
             wait = 2 ** attempt

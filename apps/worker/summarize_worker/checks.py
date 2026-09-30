@@ -19,6 +19,7 @@ def _letters(s: str) -> str:
 def run_checks(summary: str, original: str, length_percent: int = 33) -> list[str]:
     """Quotes not found in the original, leftover [placeholders], length off target. Never blocks delivery."""
     problems = []
+    target = len(original.split()) * length_percent // 100  # before the cleanup below: same target as the prompt and judge
     # running headers like "CONSENSUS MODEL OF DEMOCRACY  45" split quotes across pages: drop them first
     original = re.sub(r"^(?:\d+\s+)?[A-Z][A-Z ,:;'’\-–]{3,}(?:\s+\d+)?\s*$", " ", original, flags=re.M)
     # footnote markers glued to words ("Minister,3 the", "members.12") would break the chunk match; standalone numbers stay
@@ -37,7 +38,7 @@ def run_checks(summary: str, original: str, length_percent: int = 33) -> list[st
     outside_quotes = re.sub(r"“[^“”\n]*”|\"[^\"\n]*\"", "", summary)  # [..] inside quotes are legitimate inserts
     for leftover in re.findall(r"\[[^\]]*\]", outside_quotes):
         problems.append(f"square brackets left: {leftover}")
-    words, target = len(summary.split()), len(original.split()) * length_percent // 100
+    words = len(summary.split())
     if not 0.75 * target <= words <= 1.25 * target:
         problems.append(f"length {words} words, target ~{target}")
     return problems

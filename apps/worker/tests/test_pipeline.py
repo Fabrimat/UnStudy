@@ -5,8 +5,10 @@ import zipfile
 from io import BytesIO
 from types import SimpleNamespace
 
+import pytest
+
 from summarize_worker.docx import to_docx
-from summarize_worker.llm import DEFAULT_REPLY, FakeClient, Usage, call_model, limiter_for, make_client
+from summarize_worker.llm import DEFAULT_REPLY, EmptyReply, FakeClient, Usage, call_model, limiter_for, make_client
 from summarize_worker.config import ModelEntry, Provider
 from summarize_worker.pipeline import Phase, summarize_chapters
 from summarize_worker.text import Chapter
@@ -175,3 +177,24 @@ def test_a_raising_on_call_neither_retries_nor_changes_the_result():
         raise RuntimeError("recorder down")
     assert call_model(client, "fake", "p", on_call=boom) == "hello"
     assert len(client.calls) == 1
+
+
+class _EmptyClient:
+    def __init__(self, finish_reason: str):
+        self.finish_reason, self.calls = finish_reason, 0
+        self.chat = self.completions = self
+
+    def create(self, **_):
+        self.calls += 1
+        return iter([SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=SimpleNamespace(content=None),
+                                                                          finish_reason=self.finish_reason)])])
+
+
+def test_empty_reply_raises_and_retries_only_when_not_truncated(monkeypatch):
+    monkeypatch.setattr("summarize_worker.llm.time.sleep", lambda s: None)
+    empty, capped = _EmptyClient("stop"), _EmptyClient("length")
+    with pytest.raises(EmptyReply):
+        call_model(empty, "m", "p", attempts=3)
+    with pytest.raises(EmptyReply):
+        call_model(capped, "m", "p", attempts=3)
+    assert (empty.calls, capped.calls) == (3, 1)
