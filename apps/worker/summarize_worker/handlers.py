@@ -203,6 +203,11 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
             f"(tokens in={usage.input_tokens} out={usage.output_tokens})")
 
 
+def _lab_detail(job: dict, e: BaseException) -> str | None:
+    """Lab lanes keep the real error for the admin; user jobs keep the generic message."""
+    return db.lab_error(e) if job.get("benchmarkId") is not None else None
+
+
 def process(conn, storage, settings, clients: dict, job: dict, models=None, providers=None) -> None:
     """clients: provider id -> client. models, providers: loaded before the claim (None: env settings)."""
     model = None
@@ -214,16 +219,16 @@ def process(conn, storage, settings, clients: dict, job: dict, models=None, prov
             handle_analyze(conn, storage, settings, job)
         else:
             handle_summarize(conn, storage, settings, clients, job, draft, verify, providers, models)
-    except UnknownModel:
+    except UnknownModel as e:
         log.error(f"job {job['id']} failed (unknown model id, refunded, no retry)")
-        db.fail(conn, job, None)
-    except FileChanged:
+        db.fail(conn, job, None, _lab_detail(job, e))
+    except FileChanged as e:
         log.error(f"job {job['id']} failed (file changed after pricing, refunded, no retry)", exc_info=True)
-        db.fail(conn, job, model)
-    except Exception:
+        db.fail(conn, job, model, _lab_detail(job, e))
+    except Exception as e:
         if job.get("benchmarkId") is not None:  # a retried Lab lane is not a measurement
             log.error(f"benchmark job {job['id']} failed (no retry)", exc_info=True)
-            db.fail(conn, job, model)
+            db.fail(conn, job, model, _lab_detail(job, e))
             return
         retry = job["attempts"] < db.MAX_ATTEMPTS
         outcome = "will retry" if retry else "refunded" if job["kind"] == "summarize" else "rejected"

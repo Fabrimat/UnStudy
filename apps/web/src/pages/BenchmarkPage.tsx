@@ -193,7 +193,12 @@ function ModelCell({ m }: { m: { label: string; provider: string; model: string 
 
 function StatusCell({ lane: l }: { lane: Lane }) {
   if (l.status === 'done') return <span className="font-medium text-green-700">{t('common.done')}</span>;
-  if (l.status === 'failed') return <span className="font-medium text-red-600" title={l.error ?? undefined}>{t('common.failed')}</span>;
+  if (l.status === 'failed') return (
+    <div>
+      <span className="font-medium text-red-600">{t('common.failed')}</span>
+      {l.error && <p className="mt-1 break-words text-xs text-red-600">{l.error}</p>}
+    </div>
+  );
   return (
     <div>
       <div className="h-2 w-full rounded bg-gray-200"><div className="h-2 rounded bg-black transition-all" style={{ width: `${l.progress}%` }} /></div>

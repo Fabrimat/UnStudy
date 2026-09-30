@@ -198,3 +198,10 @@ def test_empty_reply_raises_and_retries_only_when_not_truncated(monkeypatch):
     with pytest.raises(EmptyReply):
         call_model(capped, "m", "p", attempts=3)
     assert (empty.calls, capped.calls) == (3, 1)
+
+
+def test_lab_error_masks_keys_and_is_capped():
+    from summarize_worker.db import lab_error
+    text = lab_error(RuntimeError("401 bad key sk-abcdef1234567890 and Bearer nvapi-xyz " + "x" * 600))
+    assert text.startswith("RuntimeError: 401 bad key *** and *** ") and "abcdef" not in text and "nvapi" not in text
+    assert len(text) == 500

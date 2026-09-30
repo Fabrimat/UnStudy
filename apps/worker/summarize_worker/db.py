@@ -2,6 +2,7 @@
 import contextlib
 import logging
 import os
+import re
 import threading
 import time
 
@@ -104,14 +105,22 @@ def save_evaluation(conn, job: dict, evaluation: dict) -> None:
         log.warning('column "Job".evaluation is missing (API migration not applied yet), evaluation not saved')
 
 
-def _fail(conn, job_id, attempts: int | None = None, model: str | None = None) -> None:
+def lab_error(e: BaseException) -> str:
+    """Error text stored on a failed Lab lane (admin-only): exception type and message, key-looking tokens masked."""
+    text = re.sub(r"\b(?:sk|nvapi|gsk|xai)-[\w-]{8,}|Bearer\s+\S+", "***", f"{type(e).__name__}: {e}")
+    return text[:500]
+
+
+def _fail(conn, job_id, attempts: int | None = None, model: str | None = None, detail: str | None = None) -> None:
+    """detail (Lab lanes): stored instead of the generic message, with the phase the job was in."""
     # attempts=None (recover_stale): the row is already locked FOR UPDATE and its own current
     # attempts was just read in the same transaction, so no fencing is needed there.
     fence = ' AND attempts = %s' if attempts is not None else ''
-    params = (SUMMARY_ERROR, ANALYZE_ERROR, model, job_id) + ((attempts,) if attempts is not None else ())
+    params = (detail, SUMMARY_ERROR, ANALYZE_ERROR, model, job_id) + ((attempts,) if attempts is not None else ())
     row = conn.execute(
         f"""UPDATE "Job" SET status = 'failed', phase = 'failed', "finishedAt" = now(),
-                  error = CASE WHEN kind = 'summarize' THEN %s ELSE %s END, {_TOTALS},
+                  error = COALESCE(%s::text || ' (during: ' || COALESCE(phase, '?') || ')',
+                                   CASE WHEN kind = 'summarize' THEN %s ELSE %s END), {_TOTALS},
                   model = COALESCE(%s, model)
            WHERE id = %s AND status IN ('running', 'queued'){fence}
            RETURNING id, "userId", "documentId", kind, credits""", params).fetchone()
@@ -125,10 +134,10 @@ def _fail(conn, job_id, attempts: int | None = None, model: str | None = None) -
                         WHERE id = %s AND status = 'uploaded'""", (ANALYZE_ERROR, row["documentId"]))
 
 
-def fail(conn, job: dict, model: str | None = None) -> None:
+def fail(conn, job: dict, model: str | None = None, detail: str | None = None) -> None:
     """Fail immediately, no retry (e.g. the source file changed after pricing): refunds like any other failure."""
     with conn.transaction():
-        _fail(conn, job["id"], job["attempts"], model)
+        _fail(conn, job["id"], job["attempts"], model, detail)
 
 
 def fail_or_retry(conn, job: dict, model: str | None = None) -> None:
@@ -151,7 +160,7 @@ def recover_stale(conn, stale_after: str = "10 minutes") -> int:
             if row["attempts"] < MAX_ATTEMPTS and row["benchmarkId"] is None:  # Lab lanes never retry
                 conn.execute("""UPDATE "Job" SET status = 'queued', phase = 'retrying' WHERE id = %s""", (row["id"],))
             else:
-                _fail(conn, row["id"])
+                _fail(conn, row["id"], detail=None if row["benchmarkId"] is None else "worker stopped responding")
     return len(stale)
 
 

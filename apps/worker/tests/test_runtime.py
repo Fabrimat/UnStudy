@@ -162,6 +162,7 @@ def test_stale_lab_job_fails_without_retry_or_ledger_rows(conn, storage, setting
     conn.execute("""UPDATE "Job" SET status = 'running', "heartbeatAt" = now() - interval '20 minutes'""")
     assert db.recover_stale(conn) == 1
     assert job(conn, job_id)["status"] == "failed"
+    assert job(conn, job_id)["error"].startswith("worker stopped responding (during: ")
     assert conn.execute('SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s', (job_id,)).fetchone()["n"] == 0
 
 
@@ -399,4 +400,5 @@ def test_lab_job_that_throws_fails_immediately_without_retry(conn, storage, sett
     run_one(conn, storage, settings, "summarize", BrokenClient())
     row = job(conn, job_id)
     assert (row["status"], row["attempts"]) == ("failed", 1)
+    assert row["error"].startswith("RuntimeError: LLM down (during: Chapter 1/")
     assert conn.execute('SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s', (job_id,)).fetchone()["n"] == 0
