@@ -17,3 +17,4 @@ e2e/fixtures/
 e2e/.worker.pid
 
 .superpowers/
+apps/worker/uv.lock
