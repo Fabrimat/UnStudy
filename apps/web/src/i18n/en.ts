@@ -219,6 +219,7 @@ export default {
       cost: 'Cost', name: 'Name', role: 'Role', provider: 'Provider', search: 'Search', lab: 'Lab', labTag: ' (lab)', remove: 'remove',
       open: 'open', deletedTag: ' (deleted)', phase: 'Phase',
     },
+    build: 'Build {time}',
     nav: { overview: 'Overview', users: 'Users', documents: 'Documents', jobs: 'Jobs', models: 'Models', providers: 'Providers', lab: 'Lab', legal: 'Legal', emails: 'Emails' },
     emails: {
       subject: 'Subject',

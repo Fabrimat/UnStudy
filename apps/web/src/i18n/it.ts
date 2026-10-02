@@ -222,6 +222,7 @@ const it: DeepStrings<typeof en> = {
       cost: 'Costo', name: 'Nome', role: 'Ruolo', provider: 'Provider', search: 'Cerca', lab: 'Lab', labTag: ' (lab)', remove: 'rimuovi',
       open: 'apri', deletedTag: ' (eliminato)', phase: 'Fase',
     },
+    build: 'Build del {time}',
     nav: { overview: 'Panoramica', users: 'Utenti', documents: 'Documenti', jobs: 'Job', models: 'Modelli', providers: 'Provider', lab: 'Lab', legal: 'Note legali', emails: 'Email' },
     emails: {
       subject: 'Oggetto',
