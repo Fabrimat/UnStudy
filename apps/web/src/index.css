@@ -13,7 +13,7 @@
   --font-sans: 'Figtree', 'Segoe UI', system-ui, sans-serif;
   --font-serif: 'Newsreader', Georgia, serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --breakpoint-nav: 1180px;
+  --breakpoint-nav: 73.75rem; /* 1180px; rem like the default breakpoints, or v4 cannot order it after sm */
 }
 
 /* Tailwind v4 preflight dropped the pointer cursor on buttons. */
