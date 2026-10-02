@@ -1,0 +1,120 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Dashboard-Phone.dc.html": {
+      "h": 1400,
+      "is_interactive": true,
+      "title": "Dashboard \u00b7 phone 390",
+      "w": 390,
+      "x": 0,
+      "y": 0
+    },
+    "Dashboard-Tablet.dc.html": {
+      "h": 1150,
+      "is_interactive": true,
+      "title": "Dashboard \u00b7 tablet 768",
+      "w": 768,
+      "x": 470,
+      "y": 0
+    },
+    "Login-Phone.dc.html": {
+      "h": 1050,
+      "is_interactive": true,
+      "title": "Login \u00b7 phone 390",
+      "w": 390,
+      "x": 0,
+      "y": 3960
+    },
+    "Login-Tablet.dc.html": {
+      "h": 950,
+      "is_interactive": true,
+      "title": "Login \u00b7 tablet 768",
+      "w": 768,
+      "x": 470,
+      "y": 3960
+    },
+    "Login.dc.html": {
+      "expand": "fill",
+      "h": 900,
+      "is_interactive": true,
+      "title": "Login \u00b7 desktop 1360",
+      "w": 1360,
+      "x": 1318,
+      "y": 3960
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 1060,
+      "is_interactive": true,
+      "title": "Dashboard \u00b7 desktop 1360",
+      "w": 1360,
+      "x": 1318,
+      "y": 0
+    },
+    "Summary-Phone.dc.html": {
+      "h": 2000,
+      "is_interactive": true,
+      "title": "Summary \u00b7 phone 390",
+      "w": 390,
+      "x": 0,
+      "y": 1840
+    },
+    "Summary-Tablet.dc.html": {
+      "h": 1320,
+      "is_interactive": true,
+      "title": "Summary \u00b7 tablet 768",
+      "w": 768,
+      "x": 470,
+      "y": 1840
+    },
+    "Summary.dc.html": {
+      "expand": "fill",
+      "h": 1060,
+      "is_interactive": true,
+      "title": "Summary \u00b7 desktop 1360",
+      "w": 1360,
+      "x": 1318,
+      "y": 1840
+    },
+    "Nav.dc.html": {
+      "x": 2778,
+      "y": 0,
+      "w": 390,
+      "h": 200,
+      "title": "Nav component"
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-02T09:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "maxW": 2678,
+      "text": "UnStudy: mobile first, tablet and desktop",
+      "w": 240,
+      "x": 0,
+      "y": -240
+    }
+  },
+  "order": [
+    "Dashboard-Phone.dc.html",
+    "Dashboard-Tablet.dc.html",
+    "Main.dc.html",
+    "Summary-Phone.dc.html",
+    "Summary-Tablet.dc.html",
+    "Summary.dc.html",
+    "Login-Phone.dc.html",
+    "Login-Tablet.dc.html",
+    "Login.dc.html",
+    "Nav.dc.html"
+  ],
+  "pages": [],
+  "title": "UnStudy Redesign"
+}

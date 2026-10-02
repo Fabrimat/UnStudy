@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Login</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;700&family=Newsreader:opsz,wght@6..72,400;6..72,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0}
+h1,h2{font-family:'Newsreader',Georgia,serif !important;font-weight:600 !important}
+a{color:inherit;text-decoration:none}
+.shell{padding:12px}
+.hero{display:none;padding:64px 56px}
+.form{padding:8px 0}
+.card{background:#fff;border-radius:28px;padding:24px 20px}
+.mini{display:flex}
+.hsm{display:none !important}
+.btn:hover{opacity:.88}
+input:focus{outline:3px solid #C93C20;outline-offset:0;border-color:#24173A}
+@media(min-width:640px){.shell{padding:24px}.form{padding:24px 0}.card{padding:40px}.hsm{display:block !important}}
+@media(min-width:1024px){.shell{padding:16px}.hero{display:flex}.form{padding:64px 56px}.card{background:transparent;padding:0;border-radius:0}.mini{display:none}}
+</style>
+</helmet>
+<div class="shell" style="min-height: 100vh; box-sizing: border-box; background: #F6F2EC; color: #24173A; font-family: 'Figtree', 'Segoe UI', system-ui, sans-serif; display: flex; flex-wrap: wrap; gap: 12px">
+  <section class="hero" style="flex: 1 1 420px; min-width: 0; box-sizing: border-box; background: #24173A; color: #fff; border-radius: 28px; flex-direction: column; justify-content: space-between; gap: 32px">
+    <span style="display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#fff"/><path d="M10.500 7v10a5.500 5.500 0 0 0 11 0" fill="none" stroke="#fff" stroke-width="3.600" stroke-linecap="round"/><circle cx="21.500" cy="8" r="2.400" fill="{{accent}}"/></svg>
+      UnStudy
+    </span>
+    <h1 style="margin: 0; font-size: clamp(44px, 9vw, 80px); line-height: 0.98; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance">Study less, <span style="color: #FF9C82; font-style: italic; text-decoration: underline; text-decoration-color: {{accent}}; text-decoration-thickness: 6px; text-underline-offset: 8px">understand</span> more.</h1>
+  </section>
+
+  <section class="form" style="flex: 1 1 340px; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 24px">
+    <div class="card" style="max-width: 440px; width: 100%; margin: 0 auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+      <div class="mini" style="flex-direction: column; gap: 20px">
+        <span style="display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em"><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#24173A"/><path d="M10.500 7v10a5.500 5.500 0 0 0 11 0" fill="none" stroke="#fff" stroke-width="3.600" stroke-linecap="round"/><circle cx="21.500" cy="8" r="2.400" fill="{{accent}}"/></svg>UnStudy</span>
+        <h1 style="margin: 0; font-size: clamp(34px, 9vw, 48px); line-height: 1.02; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance">Study less, <span style="color: {{accent}}; font-style: italic">understand</span> more.</h1>
+      </div>
+      <h2 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.03em">Sign in</h2>
+      <p class="hsm" style="margin: 0; font-size: 16px; color: #3F3550; text-wrap: pretty">Use your Google or Apple account, or get a sign-in link by email. No password to remember.</p>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <a class="btn" href="Main.dc.html" style="box-sizing: border-box; height: 52px; border: 1.5px solid #24173A; border-radius: 999px; background: #fff; color: #24173A; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 16px; font-weight: 500"><span aria-hidden="true" style="font-size: 20px; font-weight: 700; color: #4285F4; line-height: 1">G</span>Continue with Google</a>
+        <a class="btn" href="Main.dc.html" style="box-sizing: border-box; height: 52px; border: 1.5px solid #24173A; border-radius: 999px; background: #24173A; color: #fff; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 16px; font-weight: 500"><svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true" fill="#fff"><path d="M9 5.500c1.400 0 2.300-.9 3-.9-.2 1.500-1.300 2.700-3 2.900V5.500zM9 6.500c-1.800 0-3.700 1.100-4.300 3.300-.8 3 .9 7.200 2.800 8.200.9.4 1.400-.2 2.500-.2s1.600.6 2.500.2c1.200-.5 2.100-2.200 2.700-3.500-2.500-1.200-2.500-4.500-.2-5.600C13.200 7 11.300 6.500 9 6.500z"/><path d="M11.500 1.200c.1 1.200-.7 2.500-2 3.100-.2-1.200.6-2.600 2-3.100z"/></svg>Continue with Apple</a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: #6A5F78"><span style="flex: 1; height: 1px; background: #DDD4E4"></span>or with email<span style="flex: 1; height: 1px; background: #DDD4E4"></span></div>
+      <form style="display: flex; flex-direction: column; gap: 12px" onsubmit="return false">
+        <label for="email" style="font-size: 14px; font-weight: 500">Email</label>
+        <input id="email" type="email" placeholder="you@example.com" style="box-sizing: border-box; width: 100%; height: 52px; padding: 0 16px; border: 1.5px solid #A99BBD; border-radius: 14px; background: #fff; font: inherit; font-size: 16px; color: #24173A">
+        <button class="btn" type="submit" style="height: 52px; border: 0; border-radius: 999px; background: {{accent}}; color: #fff; font: inherit; font-size: 16px; font-weight: 500; cursor: pointer">Send magic link</button>
+      </form>
+      <footer style="display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #6A5F78">
+    <div style="display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; align-items: center">
+      <span style="display: flex; gap: 20px"><a href="Login.dc.html" style="text-decoration: underline; text-underline-offset: 3px; padding: 12px 0">Terms</a><a href="Login.dc.html" style="text-decoration: underline; text-underline-offset: 3px; padding: 12px 0">Privacy</a></span>
+      <span style="display: flex; align-items: center; gap: 8px"><label for="lang">Language</label><select id="lang" style="height: 44px; border: 1px solid #D8CFE0; border-radius: 999px; padding: 0 14px; background: #fff; color: #24173A; font: inherit; font-size: 14px"><option>English</option><option>Italiano</option><option>Español</option><option>Français</option><option>Deutsch</option><option>Português</option></select></span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px 24px; justify-content: space-between; padding-bottom: 0">
+      <span>© 2026 [COMPANY NAME] · VAT [VAT NUMBER]</span>
+      <span style="display: flex; align-items: center; gap: 6px">Built with <svg width="14" height="14" viewBox="0 0 24 24" aria-label="love" role="img"><path d="M12 21s-7.5-4.6-9.6-9.2C1 8.5 3 5 6.4 5c2.1 0 3.7 1.2 5.6 3.3C13.900 6.200 15.500 5 17.600 5 21 5 23 8.500 21.600 11.800 19.500 16.400 12 21 12 21z" fill="{{accent}}"/></svg> by [TEAM NAME]</span>
+    </div>
+  </footer>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#C93C20","options":["#C93C20","#B4306B","#2F5FC4","#2D6A4F"]},"$preview":{"width":1360,"height":780}}'>
+class Component extends DCLogic {
+renderVals() {
+  return { accent: this.props.accent ?? '#C93C20' };
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;700&family=Newsreader:opsz,wght@6..72,400;6..72,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+body{margin:0}
+h1,h2{font-family:'Newsreader',Georgia,serif !important;font-weight:600 !important}
+a{color:inherit;text-decoration:none}
+.pad{padding:16px 16px 96px}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px 24px}
+.logo{display:flex;align-items:center;gap:10px}
+.nav{display:none;gap:4px}
+.xs{display:none}
+.hsm{display:none !important}
+.hg{display:none !important}
+.d{display:none}
+.prog{order:1}
+.recent{order:2}
+@media(min-width:640px){.pad{padding:24px 28px 40px 116px}.xs{display:inline}.logo{display:none}.hd{justify-content:flex-end}.hsm{display:inline-block !important}.hg{display:grid !important}.d{display:inline}.m{display:none}.recent{order:1}.prog{order:2}.dz{min-height:300px !important;flex-direction:column !important;text-align:center !important;justify-content:center !important;padding:28px 20px !important;gap:14px !important}}
+@media(min-width:1024px){.pad{padding-right:40px}}
+@media(min-width:1180px){.pad{padding:28px 40px 40px}.logo{display:flex}.hd{justify-content:space-between}.nav{display:flex}}
+.nv:hover{background:#EAE3F0}
+.row:hover{background:#F8F5FB}
+.btn:hover{opacity:.88}
+.drop:hover{border-color:#24173A}
+.dz{min-height:112px;flex-direction:row !important;text-align:left !important;justify-content:flex-start !important;padding:16px 20px !important;gap:16px !important}
+</style>
+</helmet>
+<div class="pad" style="min-height: 100vh; background: #F6F2EC; color: #24173A; font-family: 'Figtree', 'Segoe UI', system-ui, sans-serif; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px">
+  <dc-import name="Nav" active="home" hint-size="100%,64px"></dc-import>
+  <header class="hd" style="max-width: 1240px; width: 100%; margin: 0 auto; box-sizing: border-box">
+    <a class="logo" href="Main.dc.html" style="font-size: 22px; font-weight: 700; letter-spacing: -0.02em">
+      <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#24173A"/><path d="M10.500 7v10a5.500 5.500 0 0 0 11 0" fill="none" stroke="#24173A" stroke-width="3.600" stroke-linecap="round"/><circle cx="21.500" cy="8" r="2.400" fill="{{accent}}"/></svg>
+      UnStudy
+    </a>
+    <nav class="nav" style="font-size: 14px; font-weight: 500">
+      <a href="Main.dc.html" aria-current="page" style="padding: 12px 16px; border-radius: 999px; background: #24173A; color: #fff">Dashboard</a>
+      <a class="nv" href="Main.dc.html" style="padding: 12px 16px; border-radius: 999px; color: #3F3550">Documents</a>
+      <a class="nv" href="Summary.dc.html" style="padding: 12px 16px; border-radius: 999px; color: #3F3550">Summaries</a>
+      <a class="nv" href="Main.dc.html" style="padding: 12px 16px; border-radius: 999px; color: #3F3550">Credits</a>
+      <a class="nv" href="Main.dc.html" style="padding: 12px 16px; border-radius: 999px; color: #3F3550">Methods</a>
+      <a class="nv" href="Main.dc.html" style="padding: 12px 16px; border-radius: 999px; color: #3F3550">Settings</a>
+    </nav>
+    <div style="display: flex; align-items: center; gap: 16px; font-size: 14px">
+      <span style="display: flex; align-items: center; gap: 8px; border: 1px solid #D8CFE0; border-radius: 999px; padding: 8px 14px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; background: #fff"><span style="width: 8px; height: 8px; border-radius: 50%; background: #24173A; box-shadow: 0 0 0 3px {{accent}}"></span>128 credits</span>
+      <span class="xs" style="color: #6A5F78">anna@example.com</span>
+      <a class="xs" href="Login.dc.html" style="text-decoration: underline; text-underline-offset: 3px; padding: 10px 0">Log out</a>
+    </div>
+  </header>
+
+  <main style="max-width: 1240px; width: 100%; margin: 0 auto; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: stretch">
+      <label class="drop dz" style="flex: 7 1 340px; min-width: 0; box-sizing: border-box; background: #fff; border: 2px dashed #A99BBD; border-radius: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 20px; text-align: center; cursor: pointer">
+        <span style="width: 56px; height: 56px; border-radius: 50%; background: {{accent}}; display: flex; align-items: center; justify-content: center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M5 20h14"/></svg></span>
+        <span style="font-size: clamp(22px, 5vw, 32px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.1"><span class="d">Drop PDFs here</span><span class="m">Add a PDF</span></span>
+        <span class="hsm" style="font-size: 16px; color: #4A4058; max-width: 360px; text-wrap: pretty">Add one or more files, then pick a summary length for each.</span>
+        <span class="btn hsm" style="margin-top: 4px; background: #24173A; color: #fff; padding: 14px 24px; border-radius: 999px; font-size: 15px; font-weight: 500">Browse files</span>
+        <input type="file" accept="application/pdf" multiple hidden>
+      </label>
+
+      <section style="flex: 5 1 260px; min-width: 0; box-sizing: border-box; background: #24173A; color: #fff; border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 20px">
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 16px">
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 13px; color: #CFC4DD">Balance</span>
+            <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: clamp(44px, 8vw, 56px); line-height: 1; font-weight: 500; letter-spacing: -0.04em">128</span>
+          </div>
+          <a class="btn" href="Main.dc.html" style="background: {{accent}}; color: #fff; padding: 14px 18px; border-radius: 999px; font-size: 14px; font-weight: 700">Buy credits</a>
+        </div>
+        <dl class="hg" style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #3D2D57; border-radius: 14px; overflow: hidden">
+          <sc-for list="{{stats}}" as="s" hint-placeholder-count="4">
+            <div style="background: #24173A; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+              <dt style="font-size: 12px; color: #CFC4DD">{{s.label}}</dt>
+              <dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 22px; font-weight: 500">{{s.value}}</dd>
+            </div>
+          </sc-for>
+        </dl>
+      </section>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start">
+      <section class="recent" style="flex: 7 1 340px; min-width: 0; box-sizing: border-box; background: #fff; border-radius: 24px; padding: 20px 4px 8px; display: flex; flex-direction: column; gap: 8px">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 16px 4px">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">Recent documents</h2>
+          <a href="Main.dc.html" style="font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 8px 0">All</a>
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column">
+          <sc-for list="{{docs}}" as="d" hint-placeholder-count="5">
+            <li class="row" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 14px; min-height: 44px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6A5F78" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+              <a href="Summary.dc.html" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{d.name}}</span>
+                <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #6A5F78">{{d.meta}}</span>
+              </a>
+              <span style="flex: none; font-size: 13px; font-weight: 500; padding: 5px 12px; border-radius: 999px; {{d.chip}}">{{d.status}}</span>
+            </li>
+          </sc-for>
+        </ul>
+      </section>
+
+      <section class="prog" style="flex: 5 1 260px; min-width: 0; box-sizing: border-box; background: #fff; border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 18px">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em">In progress</h2>
+        <sc-for list="{{jobs}}" as="j" hint-placeholder-count="2">
+          <a href="Summary.dc.html" style="display: flex; flex-direction: column; gap: 8px">
+            <span style="font-size: 16px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{j.name}}</span>
+            <span style="height: 12px; border-radius: 6px; background: #24173A; overflow: hidden; display: block"><span style="display: block; height: 12px; border-radius: 6px; background: {{accent}}; width: {{j.pct}}%"></span></span>
+            <span style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #4A4058"><span>{{j.phase}}</span><span style="font-family: 'IBM Plex Mono', ui-monospace, monospace">{{j.pct}}%</span></span>
+          </a>
+        </sc-for>
+      </section>
+    </div>
+  </main>
+
+  <footer style="max-width: 1240px; width: 100%; margin: 0 auto; box-sizing: border-box; border-top: 1px solid #DDD4E4; padding-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #6A5F78">
+    <div style="display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; align-items: center">
+      <span style="display: flex; gap: 20px"><a href="Main.dc.html" style="text-decoration: underline; text-underline-offset: 3px; padding: 12px 0">Terms</a><a href="Main.dc.html" style="text-decoration: underline; text-underline-offset: 3px; padding: 12px 0">Privacy</a></span>
+      <span style="display: flex; align-items: center; gap: 8px"><label for="lang">Language</label><select id="lang" style="height: 44px; border: 1px solid #D8CFE0; border-radius: 999px; padding: 0 14px; background: #fff; color: #24173A; font: inherit; font-size: 14px"><option>English</option><option>Italiano</option><option>Español</option><option>Français</option><option>Deutsch</option><option>Português</option></select></span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px 24px; justify-content: space-between; padding-bottom: 8px">
+      <span>© 2026 [COMPANY NAME] · VAT [VAT NUMBER]</span>
+      <span style="display: flex; align-items: center; gap: 6px">Built with <svg width="14" height="14" viewBox="0 0 24 24" aria-label="love" role="img"><path d="M12 21s-7.5-4.6-9.6-9.2C1 8.5 3 5 6.4 5c2.1 0 3.7 1.2 5.6 3.3C13.900 6.200 15.500 5 17.600 5 21 5 23 8.500 21.600 11.800 19.500 16.400 12 21 12 21z" fill="{{accent}}"/></svg> by [TEAM NAME]</span>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#C93C20","options":["#C93C20","#B4306B","#2F5FC4","#2D6A4F"]},"$preview":{"width":1360,"height":1010}}'>
+class Component extends DCLogic {
+renderVals() {
+  const done = 'background:#E1F0E7;color:#1B5E3B';
+  const run = 'background:#24173A;color:#fff';
+  const idle = 'background:#EAE3F0;color:#3F3550';
+  const bad = 'background:#F8E1DE;color:#A3231B';
+  return {
+    accent: this.props.accent ?? '#C93C20',
+    stats: [
+      { label: 'Documents', value: '24' },
+      { label: 'Summaries done', value: '31' },
+      { label: 'Credits spent', value: '212' },
+      { label: 'Pages summarized', value: '1,486' }
+    ],
+    docs: [
+      { name: 'Thermodynamics_ch4.pdf', meta: '42 pages · 2 min ago', status: 'Summarizing', chip: run },
+      { name: 'Annual_report_2025.pdf', meta: '118 pages · 1 h ago', status: 'Summarizing', chip: run },
+      { name: 'Lease_agreement_draft.pdf', meta: '16 pages · yesterday', status: 'Summarized', chip: done },
+      { name: 'Reading_list_scan.pdf', meta: '9 pages · yesterday', status: 'Failed', chip: bad },
+      { name: 'Grant_proposal_v3.pdf', meta: '27 pages · 3 days ago', status: 'Uploaded', chip: idle }
+    ],
+    jobs: [
+      { name: 'Thermodynamics_ch4.pdf', phase: 'Summarizing chapter 3 of 7', pct: 62 },
+      { name: 'Annual_report_2025.pdf', phase: 'Waiting in queue', pct: 8 }
+    ]
+  };
+}
+}
+</script>
+</body>
+</html>
