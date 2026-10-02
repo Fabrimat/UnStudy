@@ -1,6 +1,6 @@
 import pytest
 
-from summarize_worker.prompts import PLATFORM_RULES, length_percent, PRESETS, render_custom, render_instructions
+from summarize_worker.prompts import HIGHLIGHT_RULE, PLATFORM_RULES, length_percent, PRESETS, render_custom, render_instructions
 
 
 @pytest.mark.parametrize("preset", PRESETS)
@@ -24,7 +24,7 @@ def test_unknown_values_are_rejected():
 def test_custom_prompt_is_user_text_then_platform_block_with_placeholders_filled():
     text = render_custom("Be brief in {language}, keep {fraction} / {length}.", "it", 20)
     assert text.startswith("Be brief in Italian, keep 20% / 20%.\n\nPLATFORM RULES")
-    assert text.endswith(PLATFORM_RULES.replace("{language}", "Italian").replace("{length}", "20%"))
+    assert text.endswith(PLATFORM_RULES.replace("{language}", "Italian").replace("{length}", "20%") + HIGHLIGHT_RULE)
     assert "{" not in text and "- Language: Italian.\n- Length: about 20% of" in text
 
 

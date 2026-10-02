@@ -205,3 +205,8 @@ def test_lab_error_masks_keys_and_is_capped():
     text = lab_error(RuntimeError("401 bad key sk-abcdef1234567890 and Bearer nvapi-xyz " + "x" * 600))
     assert text.startswith("RuntimeError: 401 bad key *** and *** ") and "abcdef" not in text and "nvapi" not in text
     assert len(text) == 500
+
+
+def test_docx_renders_highlight_marks():
+    xml = zipfile.ZipFile(BytesIO(to_docx("# T\n\na ==key== b"))).read("word/document.xml")
+    assert b"==" not in xml and b"w:highlight" in xml

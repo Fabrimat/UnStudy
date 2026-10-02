@@ -65,3 +65,10 @@ def test_fix_format_is_idempotent_with_a_header_lacking_in_and_pp():
     h = "**Smith** – *Book*, p. 5"
     once = fix_format("# T\n## Intro\ntext", h)
     assert fix_format(once, h) == once and once.count(h) == 1
+
+
+def test_highlight_marks_are_ignored_by_checks_and_dropped_from_headings():
+    ok = 'The EU is ==“highly unified and “confederal”==" in structure.'.replace('==“', '=="')
+    assert [p.split()[0] for p in run_checks(ok, ORIGINAL)] == ["length"]
+    assert run_checks("a ==b c== d", "a b c d", 100) == []
+    assert fix_format("## ==Title==\n==Key.==", None) == "## Title\n\n==Key.=="

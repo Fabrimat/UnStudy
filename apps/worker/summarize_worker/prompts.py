@@ -10,7 +10,14 @@ Return the corrected summary in Markdown, and NOTHING else (no comments, no list
 - Delete any claim, term or quotation that is not supported by the original (invented facts, content only found in footnotes).
 - Quotation marks may only enclose words that appear verbatim in the original.
 - Check that attributions are correct (who said what, which year) and that comparisons are not reversed.
-- Keep the language, structure, headings, bold terms, length and style unchanged: correct, do not rewrite."""
+- Keep the language, structure, headings, bold terms, length and style unchanged: correct, do not rewrite.
+- Keep the existing ==highlighted== marks exactly as they are and do not add new ones."""
+
+# Appended by _fill to every preset and custom method, so the classic and harness drafts and revisions all get it
+HIGHLIGHT_RULE = """
+
+HIGHLIGHTS
+In each section wrap the single most important sentence (at most 1-2 per section) in ==double equals==, like ==This is the key point.==. Use them sparingly, never across paragraphs and never inside headings."""
 
 
 PLATFORM_RULES = """PLATFORM RULES (these override anything above if they conflict)
@@ -40,6 +47,7 @@ def _fill(template: str, language: str, percent: int, extras: tuple | list = ())
     # {fraction} is still replaced: custom methods saved in release B use it
     text = (template.replace("{language}", language_text).replace("{length}", f"{percent}%")
             .replace("{fraction}", f"{percent}%"))
+    text += HIGHLIGHT_RULE
     lines = [EXTRA_LINES[k] for k in EXTRA_LINES if k in extras]
     if lines:
         text += ("\n\nEXTRA SECTIONS\nAt the end of the summary add these sections, "

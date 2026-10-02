@@ -18,6 +18,7 @@ def _letters(s: str) -> str:
 
 def run_checks(summary: str, original: str, length_percent: int = 33) -> list[str]:
     """Quotes not found in the original, leftover [placeholders], length off target. Never blocks delivery."""
+    summary = summary.replace("==", "")  # ==highlight== marks are not words and must not split quotes
     problems = []
     target = len(original.split()) * length_percent // 100  # before the cleanup below: same target as the prompt and judge
     # running headers like "CONSENSUS MODEL OF DEMOCRACY  45" split quotes across pages: drop them first
@@ -54,6 +55,7 @@ def fix_format(text: str, header: str | None) -> str:
         return m.group(1) + " ".join(w if j and w in SMALL_WORDS else w[:1].upper() + w[1:] for j, w in enumerate(words))
 
     text = re.sub(r"^(#{1,6} )([^a-z\n]*[A-Z]{3}[^a-z\n]*)$", title_case, text, flags=re.M)
+    text = re.sub(r"^(#{1,6} .*)$", lambda m: m.group(1).replace("==", ""), text, flags=re.M)  # no marks in headings
     text = re.sub(r"\n{3,}", "\n\n", text)
     if header:  # the bibliographic line is imposed right after the H1; a model-written one is replaced, not duplicated
         text = re.sub(rf"^(# .*)\n+(?:(?:\*\*[^\n]*(?: – in |pp\.)[^\n]*|{re.escape(header)})\n+)?", lambda m: f"{m.group(1)}\n\n{header}\n\n",

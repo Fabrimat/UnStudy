@@ -50,7 +50,7 @@ STYLE_INSTRUCTIONS = ("You are a strict style reviewer. You receive a SUMMARY an
 REVISE_RULES = """
 
 ---
-You now correct an existing summary. You receive the ORIGINAL text, the CURRENT SUMMARY, a numbered list of issues and the target length. Apply ONLY the listed fixes and keep everything else as is. Judge against the ORIGINAL only. Return the whole corrected summary in Markdown and nothing else: no comments, no code fences."""
+You now correct an existing summary. You receive the ORIGINAL text, the CURRENT SUMMARY, a numbered list of issues and the target length. Apply ONLY the listed fixes and keep everything else as is, including the existing ==highlighted== marks (keep them, do not add new ones). Judge against the ORIGINAL only. Return the whole corrected summary in Markdown and nothing else: no comments, no code fences."""
 
 
 # --- prompts (shared by the real calls and the Lab dump) ---
