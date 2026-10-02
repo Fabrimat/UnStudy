@@ -11,6 +11,7 @@ import {
 import { fmt, t } from '../i18n';
 
 const MAX_LANES = 8;
+type PresetKey = 'classic' | 'harness' | 'versus' | 'strongCritic';
 type LaneDraft = { draft: string; verify: string; harness: boolean }; // verify: 'same' | 'none' | model id
 
 const toSpec = (l: LaneDraft): LaneSpec => ({ draft: l.draft, verify: l.verify === 'same' ? l.draft : l.verify === 'none' ? null : l.verify, ...(l.harness && { harness: true }) });
@@ -61,6 +62,14 @@ function NewRun() {
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const firstModel = models[0]?.id ?? '';
   const shown: LaneDraft[] = lanes.length ? lanes : firstModel ? [{ draft: firstModel, verify: 'same', harness: false }] : [];
+  // Lane presets built from the enabled catalogue (first MAX_LANES lanes kept)
+  const lane = (draft: string, harness: boolean, verify = 'same'): LaneDraft => ({ draft, verify, harness });
+  const presets: [PresetKey, () => LaneDraft[], boolean][] = [
+    ['classic', () => models.map((m) => lane(m.id, false)), false],
+    ['harness', () => models.map((m) => lane(m.id, true)), false],
+    ['versus', () => models.slice(0, MAX_LANES / 2).flatMap((m) => [lane(m.id, false), lane(m.id, true)]), false],
+    ['strongCritic', () => models.filter((m) => m.id !== judge).map((m) => lane(m.id, true, judge)), true],
+  ];
   const setLane = (i: number, patch: Partial<LaneDraft>) => setLanes(shown.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const start = useMutation({
@@ -154,15 +163,18 @@ function NewRun() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-medium">{t('adminLab.lanes', { n: shown.length, max: MAX_LANES })}</h3>
           <div className="flex gap-2 text-sm">
-            <button
-              type="button"
-              disabled={models.length === 0}
-              onClick={() => setLanes(models.slice(0, MAX_LANES).map((m) => ({ draft: m.id, verify: 'same', harness: false })))}
-              className="rounded border bg-white px-3 py-1 disabled:opacity-50"
-              title={models.length > MAX_LANES ? t('adminLab.onlyFirst', { max: MAX_LANES }) : undefined}
-            >
-              {t('adminLab.oneLanePerModel')}
-            </button>
+            {presets.map(([key, make, needsJudge]) => (
+              <button
+                key={key}
+                type="button"
+                disabled={models.length === 0 || (needsJudge && judge === 'none')}
+                onClick={() => setLanes(make().slice(0, MAX_LANES))}
+                className="rounded border bg-white px-3 py-1 disabled:opacity-50"
+                title={t(`adminLab.preset.${key}Hint`, { max: MAX_LANES })}
+              >
+                {t(`adminLab.preset.${key}`)}
+              </button>
+            ))}
             <button
               type="button"
               disabled={shown.length >= MAX_LANES || !firstModel}
