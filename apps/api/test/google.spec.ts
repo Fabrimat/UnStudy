@@ -15,7 +15,7 @@ describe('google login', () => {
   afterAll(() => app.close());
 
   it('advertises google and redirects to the consent screen, binding a state cookie', async () => {
-    expect((await request(app.getHttpServer()).get('/api/auth/providers')).body).toEqual({ google: true });
+    expect((await request(app.getHttpServer()).get('/api/auth/providers')).body).toEqual({ google: true, apple: false });
     const res = await request(app.getHttpServer()).get('/api/auth/google').expect(302);
     expect(res.headers.location).toMatch(/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/);
     expect(res.headers.location).toContain('client_id=test-client');

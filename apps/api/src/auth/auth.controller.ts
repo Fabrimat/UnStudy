@@ -16,7 +16,7 @@ export class AuthController {
 
   @Get('providers')
   providers() {
-    return { google: config.google !== null };
+    return { google: config.google !== null, apple: config.apple !== null };
   }
 
   @Post('magic-link')

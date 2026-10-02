@@ -91,7 +91,7 @@ describe('magic link auth', () => {
 
   it('lists login providers (google off without config)', async () => {
     const res = await http().get('/api/auth/providers').expect(200);
-    expect(res.body).toEqual({ google: false });
+    expect(res.body).toEqual({ google: false, apple: false });
     await http().get('/api/auth/google').expect(404);
   });
 });

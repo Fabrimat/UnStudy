@@ -204,4 +204,14 @@ export const config = {
         callbackUrl: need('GOOGLE_CALLBACK_URL'),
       }
     : null,
+  // Sign in with Apple: clientId = Services ID; privateKey = .p8 contents (literal \n escapes accepted)
+  apple: process.env.APPLE_CLIENT_ID
+    ? {
+        clientId: need('APPLE_CLIENT_ID'),
+        teamId: need('APPLE_TEAM_ID'),
+        keyId: need('APPLE_KEY_ID'),
+        privateKey: need('APPLE_PRIVATE_KEY').replace(/\\n/g, '\n'),
+        callbackUrl: need('APPLE_CALLBACK_URL'),
+      }
+    : null,
 };
