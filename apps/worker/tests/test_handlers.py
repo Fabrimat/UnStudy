@@ -240,3 +240,15 @@ def test_duration_excludes_the_judge(calls, monkeypatch):
     run_summarize(FakeStorage(), LAB_JOB, {"judge": "j"}, models=[JUDGE])
     assert got["duration_ms"] == 5000
 
+
+
+def test_harness_option_routes_to_the_harness(calls, monkeypatch):
+    used = []
+    monkeypatch.setattr(handlers.harness, "summarize_chapters", lambda *a, **k: used.append("h") or ("# md", [], ["s"]))
+    monkeypatch.setattr(handlers.harness, "prompts_dump", lambda *a, **k: "HARNESS DUMP")
+    st = FakeStorage()
+    run_summarize(st, LAB_JOB, {"harness": True})
+    assert used == ["h"] and st.puts["users/u1/lab/b1/prompts/j1.txt"][0] == b"HARNESS DUMP"
+    used.clear()
+    run_summarize(FakeStorage(), JOB)
+    assert used == []
