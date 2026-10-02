@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router';
 import Pager from '../../Pager';
 import Select from '../../Select';
 import { t } from '../../i18n';
-import { openAdminDownload, useAdminJob, useAdminJobs } from '../../api';
+import { openAdminDownload, useAdminJob, useAdminJobs, useJobAction } from '../../api';
 import { remarkMark } from '../../ui';
 import { Err, Field, fmtCost, fmtDate, fmtDuration, fmtNum, Table, useFilters } from './ui';
 
@@ -16,6 +16,8 @@ export default function AdminJobs() {
   const f = useFilters();
   const filters = { status: f.get('status'), kind: f.get('kind'), lab: f.get('lab'), userId: f.get('userId'), documentId: f.get('documentId'), page: f.page };
   const jobs = useAdminJobs(filters);
+  const stop = useJobAction('stop');
+  const retry = useJobAction('retry');
   return (
     <section className="space-y-4">
       <h1 className="text-xl font-semibold">{t('admin.nav.jobs')}</h1>
@@ -30,8 +32,8 @@ export default function AdminJobs() {
           {filters.documentId && <>{t('common.document')}: <Link className="underline" to={`/admin/documents/${filters.documentId}`}>{filters.documentId}</Link>{' '}<button className="underline" onClick={() => f.set({ documentId: '' })}>{t('admin.common.remove')}</button></>}
         </p>
       )}
-      <Err error={jobs.error} />
-      <Table head={[t('common.date'), t('admin.common.type'), t('common.status'), t('common.model'), t('admin.common.credits'), t('admin.common.duration'), t('admin.common.user'), t('common.document')]} empty={jobs.data?.items.length === 0 ? t('admin.jobs.none') : undefined}>
+      <Err error={jobs.error ?? stop.error ?? retry.error} />
+      <Table head={[t('common.date'), t('admin.common.type'), t('common.status'), t('common.model'), t('admin.common.credits'), t('admin.common.duration'), t('admin.common.user'), t('common.document'), '']} empty={jobs.data?.items.length === 0 ? t('admin.jobs.none') : undefined}>
         {jobs.data?.items.map((j) => (
           <tr key={j.id}>
             <td className="p-2"><Link to={`/admin/jobs/${j.id}`} className="underline">{fmtDate(j.createdAt)}</Link></td>
@@ -40,6 +42,10 @@ export default function AdminJobs() {
             <td className="p-2">{j.modelId ?? j.model ?? ''}</td><td className="p-2">{j.credits}</td><td className="p-2">{fmtDuration(j.durationMs)}</td>
             <td className="p-2"><Link to={`/admin/users/${j.user.id}`} className="underline">{j.user.email}</Link></td>
             <td className="max-w-48 truncate p-2"><Link to={`/admin/documents/${j.document.id}`} className="underline">{j.document.filename}</Link></td>
+            <td className="p-2">
+              {(j.status === 'queued' || j.status === 'running') && <button disabled={stop.isPending} onClick={() => window.confirm(t('admin.jobs.confirmStop')) && stop.mutate(j.id)} className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs text-red-700 disabled:opacity-50">{t('admin.jobs.stop')}</button>}
+              {j.status === 'failed' && j.benchmarkId && <button disabled={retry.isPending} onClick={() => retry.mutate(j.id)} className="rounded border bg-white px-2 py-0.5 text-xs disabled:opacity-50">{t('admin.jobs.retry')}</button>}
+            </td>
           </tr>
         ))}
       </Table>
@@ -58,6 +64,8 @@ function usageRows(u: unknown): [string, Record<string, number>][] {
 export function AdminJobPage() {
   const { id } = useParams();
   const job = useAdminJob(id);
+  const stop = useJobAction('stop');
+  const retry = useJobAction('retry');
   const [content, setContent] = useState<string | null>(null);
   const [error, setError] = useState('');
   const done = job.data?.status === 'done';
@@ -90,6 +98,13 @@ export function AdminJobPage() {
         <Field label={t('admin.common.tokensInOut')}>{fmtNum(j.inputTokens)} / {fmtNum(j.outputTokens)}</Field><Field label={t('admin.jobs.estCost')}>{fmtCost(j.costUsd)}</Field>
         {j.benchmarkId && <Field label={t('admin.common.lab')}><Link className="underline" to={`/admin/benchmarks/${j.benchmarkId}`}>{t('admin.jobs.openRun')}</Link></Field>}
       </dl>
+      {(j.status === 'queued' || j.status === 'running') && (
+        <button disabled={stop.isPending} onClick={() => window.confirm(t('admin.jobs.confirmStop')) && stop.mutate(j.id)} className="rounded border border-red-300 bg-white px-4 py-2 text-red-700 disabled:opacity-50">{t('admin.jobs.stop')}</button>
+      )}
+      {j.status === 'failed' && j.benchmarkId && (
+        <button disabled={retry.isPending} onClick={() => retry.mutate(j.id)} className="rounded border bg-white px-4 py-2 disabled:opacity-50">{t('admin.jobs.retry')}</button>
+      )}
+      {(stop.error ?? retry.error) && <p className="text-red-600">{(stop.error ?? retry.error)!.message}</p>}
       {j.error && <p className="break-words text-red-600">{j.error}</p>}
       {j.warnings?.length > 0 && (
         <div className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">

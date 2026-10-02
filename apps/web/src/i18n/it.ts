@@ -302,6 +302,7 @@ const it: DeepStrings<typeof en> = {
       labAndNormal: 'Lab e normali', onlyNormal: 'Solo normali', onlyLab: 'Solo Lab', none: 'Nessun job trovato.', title: 'Job {kind}',
       attempts: 'Tentativi', created: 'Creato', finished: 'Terminato', estCost: 'Costo stimato', openRun: 'apri esecuzione', warnings: 'Avvisi',
       options: 'Opzioni', llmUsage: 'Uso LLM', creditLedger: 'Transazioni di crediti', downloadMd: 'Scarica .md', downloadDocx: 'Scarica .docx',
+      stop: 'Interrompi', retry: 'Riprova', actions: 'Azioni', confirmStop: 'Interrompere questo job? I crediti di un riassunto verranno rimborsati all’utente.',
     },
     models: {
       label: 'Etichetta', multiplier: 'Moltiplicatore', multiplierShort: 'Molt.', temperature: 'Temperatura', dontSend: 'non inviare', priceIn: 'Prezzo in /1M',
@@ -331,6 +332,9 @@ const it: DeepStrings<typeof en> = {
     waitLanes: 'Aspetta che tutte le corsie finiscano',
     confirmDelete: 'Eliminare questa esecuzione e tutti i suoi risultati?',
     deleteRun: 'Elimina esecuzione',
+    stopRun: 'Interrompi esecuzione',
+    confirmStopRun: 'Interrompere tutte le corsie attive di questa esecuzione?',
+    retryLane: 'Riprova corsia',
     downloadZip: 'Scarica .zip',
     stillRunning: 'Alcune corsie sono ancora in corso; riprova quando finiscono.',
     failedCalls: ' ({n} fallite)',

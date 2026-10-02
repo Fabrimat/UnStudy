@@ -299,6 +299,7 @@ export default {
       labAndNormal: 'Lab and regular', onlyNormal: 'Regular only', onlyLab: 'Lab only', none: 'No jobs found.', title: 'Job {kind}',
       attempts: 'Attempts', created: 'Created', finished: 'Finished', estCost: 'Estimated cost', openRun: 'open run', warnings: 'Warnings',
       options: 'Options', llmUsage: 'LLM usage', creditLedger: 'Credit transactions', downloadMd: 'Download .md', downloadDocx: 'Download .docx',
+      stop: 'Stop', retry: 'Retry', actions: 'Actions', confirmStop: 'Stop this job? Credits of a summary are refunded to the user.',
     },
     models: {
       label: 'Label', multiplier: 'Multiplier', multiplierShort: 'Mult.', temperature: 'Temperature', dontSend: "don't send", priceIn: 'Price in /1M',
@@ -328,6 +329,9 @@ export default {
     waitLanes: 'Wait for all lanes to finish',
     confirmDelete: 'Delete this run and all its results?',
     deleteRun: 'Delete run',
+    stopRun: 'Stop run',
+    confirmStopRun: 'Stop all active lanes of this run?',
+    retryLane: 'Retry lane',
     downloadZip: 'Download .zip',
     stillRunning: 'Some lanes are still running; try again when they finish.',
     failedCalls: ' ({n} failed)',

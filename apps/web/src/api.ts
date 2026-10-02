@@ -157,6 +157,15 @@ export async function api<T = void>(path: string, init: RequestInit = {}): Promi
   return body as T;
 }
 
+// Admin stop / retry of one job (a Lab lane or any active job); the worker notices via its fenced heartbeat.
+export function useJobAction(action: 'stop' | 'retry') {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/admin/jobs/${id}/${action}`, { method: 'POST' }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin'] }),
+  });
+}
+
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/me') });
 
 export const useLegal = (kind: LegalKind) =>

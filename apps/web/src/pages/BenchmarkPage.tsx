@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router';
-import { api, ApiError, BenchmarkDetail, lengthLabel, Lane, laneActive, LANGUAGES, methodLabel, PhaseUsage, Scores, useMethods } from '../api';
+import { api, ApiError, BenchmarkDetail, lengthLabel, Lane, laneActive, LANGUAGES, methodLabel, PhaseUsage, Scores, useJobAction, useMethods } from '../api';
 import { fmt, t } from '../i18n';
 import { remarkMark } from '../ui';
 
@@ -37,6 +37,11 @@ export default function BenchmarkPage() {
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) qc.invalidateQueries({ queryKey: ['admin', 'benchmarks', id] });
     },
+  });
+
+  const stop = useMutation({
+    mutationFn: () => api(`/admin/benchmarks/${id}/stop`, { method: 'POST' }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['admin'] }),
   });
 
   const [draft, setDraft] = useState<string | null>(null);
@@ -98,6 +103,11 @@ export default function BenchmarkPage() {
           ) : (
             <a href={`/api/admin/benchmarks/${b.id}/zip`} download className="rounded border bg-white px-3 py-1 text-sm">{t('benchmark.downloadZip')}</a>
           )}
+        {running && (
+          <button disabled={stop.isPending} onClick={() => window.confirm(t('benchmark.confirmStopRun')) && stop.mutate()} className="rounded border border-red-300 bg-white px-3 py-1 text-sm text-red-700 disabled:opacity-50">
+            {t('benchmark.stopRun')}
+          </button>
+        )}
         <button
           disabled={running || remove.isPending}
           title={running ? t('benchmark.waitLanes') : undefined}
@@ -108,6 +118,7 @@ export default function BenchmarkPage() {
         </button>
         </div>
       </div>
+      {stop.error && <p className="text-red-600">{stop.error.message}</p>}
       {remove.error && (
         <p className="text-red-600">
           {remove.error instanceof ApiError && remove.error.status === 409 ? t('benchmark.stillRunning') : remove.error.message}
@@ -197,11 +208,14 @@ function ModelCell({ m }: { m: { label: string; provider: string; model: string 
 }
 
 function StatusCell({ lane: l }: { lane: Lane }) {
+  const retry = useJobAction('retry');
   if (l.status === 'done') return <span className="font-medium text-green-700">{t('common.done')}</span>;
   if (l.status === 'failed') return (
     <div>
       <span className="font-medium text-red-600">{t('common.failed')}</span>
       {l.error && <p className="mt-1 break-words text-xs text-red-600">{l.error}</p>}
+      <button disabled={retry.isPending} onClick={() => retry.mutate(l.jobId)} className="mt-1 rounded border bg-white px-2 py-0.5 text-xs disabled:opacity-50">{t('benchmark.retryLane')}</button>
+      {retry.error && <p className="mt-1 text-xs text-red-600">{retry.error.message}</p>}
     </div>
   );
   return (

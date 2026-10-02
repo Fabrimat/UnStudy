@@ -39,6 +39,18 @@ export class AdminDataController {
     return this.jobs.get(id);
   }
 
+  @Post('jobs/:id/stop')
+  @HttpCode(204)
+  stopJob(@CurrentUser() admin: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.jobs.stop(admin, id);
+  }
+
+  @Post('jobs/:id/retry')
+  @HttpCode(204)
+  retryJob(@CurrentUser() admin: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.jobs.retry(admin, id);
+  }
+
   @Get('jobs/:id/content')
   @Header('Content-Type', 'text/markdown; charset=utf-8')
   jobContent(@CurrentUser() admin: User, @Param('id', ParseUUIDPipe) id: string) {

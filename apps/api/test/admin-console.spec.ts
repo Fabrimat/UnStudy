@@ -269,4 +269,57 @@ describe('admin console', () => {
       await get(a.cookie, '/admin/stats?days=366').expect(400);
     });
   });
+
+  describe('stop and retry', () => {
+    const post = (cookie: string, url: string) => http().post(`/api${url}`).set('Origin', ORIGIN).set('Cookie', cookie);
+    const job = async (userId: string, documentId: string, data: object = {}) =>
+      prisma.job.create({ data: { userId, documentId, kind: 'summarize', status: 'running', phase: 'draft', credits: 3, attempts: 1, ...data } });
+
+    it('stops a running summary: failed, refunded once, 409 when repeated or finished, 404 to non-admins', async () => {
+      const a = await admin();
+      const u = await loginAs(app, 'u@x.com');
+      const d = await doc(u.user.id);
+      await prisma.creditLedger.create({ data: { userId: u.user.id, type: 'grant', amount: 10 } });
+      const j = await job(u.user.id, d.id);
+      await prisma.creditLedger.create({ data: { userId: u.user.id, type: 'reserve', amount: -3, jobId: j.id } });
+      await post(u.cookie, `/admin/jobs/${j.id}/stop`).expect(404);
+      await post(a.cookie, `/admin/jobs/${j.id}/stop`).expect(204);
+      expect(await prisma.job.findUnique({ where: { id: j.id } })).toMatchObject({ status: 'failed', phase: 'failed', error: 'Stopped by an administrator. Your credits have been refunded.' });
+      expect(await prisma.creditLedger.findMany({ where: { jobId: j.id, type: 'refund' } })).toMatchObject([{ amount: 3, userId: u.user.id }]);
+      expect((await get(u.cookie, '/me').expect(200)).body.balance).toBe(10);
+      await post(a.cookie, `/admin/jobs/${j.id}/stop`).expect(409);
+      expect(await prisma.creditLedger.count({ where: { jobId: j.id, type: 'refund' } })).toBe(1);
+      const done = await job(u.user.id, d.id, { status: 'done' });
+      await post(a.cookie, `/admin/jobs/${done.id}/stop`).expect(409);
+      await post(a.cookie, `/admin/jobs/${UUID}/stop`).expect(404);
+    });
+
+    it('stopping an analyze job rejects its document', async () => {
+      const a = await admin();
+      const d = await prisma.document.create({ data: { userId: a.user.id, filename: 'x.pdf', sizeBytes: 1, s3Key: 'k', status: 'uploaded' } });
+      const j = await job(a.user.id, d.id, { kind: 'analyze', credits: 0 });
+      await post(a.cookie, `/admin/jobs/${j.id}/stop`).expect(204);
+      expect(await prisma.document.findUnique({ where: { id: d.id } })).toMatchObject({ status: 'rejected', rejectReason: 'Stopped by an administrator.' });
+    });
+
+    it('stops every active lane of a benchmark, no ledger rows; retry requeues a failed lane only', async () => {
+      const a = await admin();
+      const d = await doc(a.user.id);
+      const b = await prisma.benchmark.create({ data: { userId: a.user.id, documentId: d.id, options: {} } });
+      const lane = (status: 'queued' | 'running' | 'done') => job(a.user.id, d.id, { status, credits: 0, benchmarkId: b.id });
+      const [q, r, f] = [await lane('queued'), await lane('running'), await lane('done')];
+      const res = await post(a.cookie, `/admin/benchmarks/${b.id}/stop`).expect(200);
+      expect(res.body.lanes.map((l: { status: string }) => l.status).sort()).toEqual(['done', 'failed', 'failed']);
+      expect(await prisma.job.findUnique({ where: { id: r.id } })).toMatchObject({ error: 'Stopped by an administrator (during: draft)' });
+      expect(await prisma.creditLedger.count()).toBe(0);
+      await post(a.cookie, `/admin/benchmarks/${UUID}/stop`).expect(404);
+
+      await post(a.cookie, `/admin/jobs/${f.id}/retry`).expect(409);
+      await post(a.cookie, `/admin/jobs/${q.id}/retry`).expect(204);
+      expect(await prisma.job.findUnique({ where: { id: q.id } })).toMatchObject({ status: 'queued', phase: 'retrying', progress: 0, error: null, finishedAt: null, attempts: 1 });
+      await post(a.cookie, `/admin/jobs/${q.id}/retry`).expect(409);
+      const u = await job(a.user.id, d.id, { status: 'failed' });
+      await post(a.cookie, `/admin/jobs/${u.id}/retry`).expect(409);
+    });
+  });
 });

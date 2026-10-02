@@ -111,6 +111,12 @@ export class AdminController {
     res.type('application/zip').attachment(filename).send(data);
   }
 
+  @Post('benchmarks/:id/stop')
+  @HttpCode(200)
+  stop(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.benchmarks.stop(user, id);
+  }
+
   @Patch('benchmarks/:id')
   rename(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RenameBenchmarkDto) {
     return this.benchmarks.rename(user, id, dto.name);

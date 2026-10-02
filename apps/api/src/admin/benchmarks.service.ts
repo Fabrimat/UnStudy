@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma.service';
 import { labPromptKey, labSourceKey, StorageService } from '../storage/storage.service';
 import { CreateBenchmarkDto, ListBenchmarksDto } from './admin.dto';
 import { zip } from '../zip';
+import { JobsAdminService } from './jobs.admin.service';
 import { jobCost, tokensCost, usageByJob } from './usage';
 
 // A catalogue entry may have been removed since the run: show the bare id, cost stays unknown.
@@ -24,7 +25,7 @@ type Lane = { draft: string; verify: string | null };
 export class BenchmarksService {
   private logger = new Logger(BenchmarksService.name);
 
-  constructor(private prisma: PrismaService, private storage: StorageService, private catalog: CatalogService) {}
+  constructor(private prisma: PrismaService, private storage: StorageService, private catalog: CatalogService, private jobs: JobsAdminService) {}
 
   async create(user: User, dto: CreateBenchmarkDto) {
     // Lab may use adminOnly models but not disabled ones.
@@ -163,6 +164,16 @@ export class BenchmarksService {
     }
     this.logger.log(`Benchmark exported: admin ${user.id}, ${id}`);
     return { filename: `lab-${safe(detail.name || id)}.zip`, data: zip(files) };
+  }
+
+  async stop(user: User, id: string) {
+    const b = await this.prisma.benchmark.findFirst({ where: { id, userId: user.id }, include: { jobs: { select: { id: true, status: true } } } });
+    if (!b) throw new NotFoundException('Benchmark not found');
+    for (const j of b.jobs.filter(active)) {
+      // a lane that finished meanwhile is fine
+      await this.jobs.stop(user, j.id).catch((e) => { if (!(e instanceof ConflictException)) throw e; });
+    }
+    return this.get(user, id);
   }
 
   // empty name = untitled

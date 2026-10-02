@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Job, Prisma, User } from '@summarize/db';
 import { CatalogService } from '../catalog/catalog.service';
 import { JobsService } from '../jobs/jobs.service';
@@ -84,6 +84,39 @@ export class JobsAdminService {
     const res = await this.jobs.downloadUrl(id, format);
     await this.audit(admin, `download ${format}`, id);
     return res;
+  }
+
+  // The worker's heartbeat/finish UPDATEs are fenced on status='running', so once this commits it drops the job without writing.
+  // Mirrors the worker's _fail: refund summaries, reject the document of an analyze job, token totals from LlmCall.
+  async stop(admin: User, id: string) {
+    await this.prisma.$transaction(async (tx) => {
+      const j = await tx.job.findUnique({ where: { id } });
+      if (!j) throw new NotFoundException('Job not found');
+      const refund = j.kind === 'summarize' && j.credits > 0;
+      const error = j.benchmarkId ? `Stopped by an administrator (during: ${j.phase || '?'})` : refund ? 'Stopped by an administrator. Your credits have been refunded.' : 'Stopped by an administrator.';
+      const sums = await tx.llmCall.aggregate({ where: { jobId: id }, _sum: { inputTokens: true, outputTokens: true } });
+      const { count } = await tx.job.updateMany({
+        where: { id, status: { in: ['queued', 'running'] } },
+        data: { status: 'failed', phase: 'failed', finishedAt: new Date(), error, inputTokens: sums._sum.inputTokens ?? 0, outputTokens: sums._sum.outputTokens ?? 0 },
+      });
+      if (!count) throw new ConflictException('Job is not active');
+      if (refund) await tx.creditLedger.createMany({ data: [{ userId: j.userId, type: 'refund', amount: j.credits, jobId: id }], skipDuplicates: true });
+      if (j.kind === 'analyze') await tx.document.updateMany({ where: { id: j.documentId, status: 'uploaded' }, data: { status: 'rejected', rejectReason: error } });
+    });
+    this.logger.log(`Admin ${admin.id} stopped job ${id}`);
+  }
+
+  // Lab lanes only (user summaries were already refunded). Keeps attempts (the worker's fence) and earlier LlmCall rows (real spend).
+  async retry(admin: User, id: string) {
+    const j = await this.prisma.job.findUnique({ where: { id }, select: { benchmarkId: true } });
+    if (!j) throw new NotFoundException('Job not found');
+    if (!j.benchmarkId) throw new ConflictException('Only Lab lanes can be retried');
+    const { count } = await this.prisma.job.updateMany({
+      where: { id, status: 'failed' },
+      data: { status: 'queued', phase: 'retrying', progress: 0, error: null, finishedAt: null, durationMs: null, heartbeatAt: null, warnings: [], evaluation: Prisma.DbNull },
+    });
+    if (!count) throw new ConflictException('Job is not failed');
+    this.logger.log(`Admin ${admin.id} retried lane ${id}`);
   }
 
   private async audit(admin: User, what: string, id: string) {
