@@ -7,6 +7,7 @@
   --color-alt: #EAE3F0;
   --color-muted: #6A5F78;
   --color-soft: #3F3550;
+  --color-mark: #FFDDD2;
   --color-line: #DDD4E4;
   --color-edge: #A99BBD;
   --font-sans: 'Figtree', 'Segoe UI', system-ui, sans-serif;
@@ -31,3 +32,4 @@
 .prose-summary ol { list-style: decimal; padding-left: 1.4rem; }
 .prose-summary li + li { margin-top: 0.5rem; }
 .prose-summary strong { font-weight: 600; }
+.prose-summary mark { background: var(--color-mark); color: var(--color-ink); padding: 0 2px; border-bottom: 2px solid var(--color-accent); }

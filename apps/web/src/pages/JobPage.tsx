@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import Markdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, Doc, Job, lengthLabel } from '../api';
-import { fmt, t } from '../i18n';
-import { Chip } from '../ui';
+import { fmt, phaseLabel, t } from '../i18n';
+import { Chip, remarkMark } from '../ui';
 
 export default function JobPage() {
   const { id } = useParams();
@@ -52,11 +52,15 @@ export default function JobPage() {
   const finished = job.status === 'done' || job.status === 'failed';
   const tone = job.status === 'done' ? 'done' : job.status === 'failed' ? 'bad' : 'run';
   const btn = 'rounded-full bg-ink px-5 py-3.5 text-sm font-medium text-white hover:opacity-90';
-  const details = [
+  // first Markdown heading is the title and is dropped from the body
+  const m = content && /^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/m.exec(content);
+  const title = m ? m[1] : doc.data?.filename.replace(/\.pdf$/i, '');
+  const body = m ? content!.replace(m[0], '') : content;
+  const details: [string, ReactNode][] = [
     [t('job.source'), doc.data?.pages != null ? t('job.pages', { n: doc.data.pages }) : '…'],
     [t('jobs.colLength'), lengthLabel(job.options) || '…'],
     [t('job.cost'), t('common.credits', { n: job.credits })],
-    [t('common.date'), fmt.date(job.createdAt)],
+    [t('common.date'), <span title={fmt.date(job.createdAt)}>{fmt.relative(job.createdAt)}</span>],
   ];
   return (
     <section className="flex flex-col gap-4">
@@ -76,14 +80,15 @@ export default function JobPage() {
         <article className="min-w-0 flex-[999_1_340px] rounded-3xl bg-white px-5 py-6">
           <div className="mx-auto flex max-w-[680px] flex-col gap-5">
             <span className="break-words font-mono text-xs text-muted">{t('common.summary').toUpperCase()}{doc.data && ` · ${doc.data.filename}`}</span>
-            {job.status === 'done' && content && <div className="prose-summary"><Markdown disallowedElements={['img']}>{content}</Markdown></div>}
+            {title && <h1 className="break-words font-serif text-[clamp(30px,6vw,44px)] font-semibold leading-[1.05] tracking-tight text-balance">{title}</h1>}
+            {job.status === 'done' && body && <div className="prose-summary"><Markdown remarkPlugins={[remarkMark]} disallowedElements={['img']}>{body}</Markdown></div>}
             {job.status === 'failed' && <p className="text-[#A3231B]">{job.error}</p>}
             {!finished && (
               <>
                 <div className="h-3 w-full overflow-hidden rounded-md bg-ink">
                   <div className="h-3 rounded-md bg-accent transition-all" style={{ width: `${job.progress}%` }} />
                 </div>
-                <p className="text-sm text-soft">{job.progress}% · {job.status === 'queued' ? t('common.waitingInQueue') : job.phase}</p>
+                <p className="text-sm text-soft">{job.progress}% · {job.status === 'queued' ? t('common.waitingInQueue') : phaseLabel(job.phase)}</p>
               </>
             )}
           </div>

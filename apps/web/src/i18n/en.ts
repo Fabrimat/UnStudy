@@ -50,6 +50,11 @@ export default {
     rejected: 'Rejected: {reason}',
     pagesCredits: '{pages} pages · {credits} credits',
   },
+  phase: {
+    chapter: 'Summarizing chapter {i} of {n}', reading: 'Reading page {i} of {n}', judging: 'Judging chapter {i} of {n}',
+    saving: 'Saving', starting: 'Starting', retrying: 'Retrying', draft: 'draft', factCheck: 'fact-check',
+  },
+  footer: { vat: 'VAT', city: 'Gent, Belgium', builtWith: 'Built with', by: 'by', love: 'love' },
   nav: {
     home: 'Home', docs: 'Docs', more: 'More',
     dashboard: 'Dashboard', documents: 'Documents', summaries: 'Summaries', credits: 'Credits', methods: 'Methods',
@@ -57,7 +62,7 @@ export default {
   },
   login: {
     signIn: 'Sign in',
-    intro: 'Use your Google account, or get a sign-in link by email. No password to remember.',
+    intro: 'Use your Google or Apple account, or get a sign-in link by email. No password to remember.',
     orEmail: 'or with email',
     hero1: 'Study less,',
     hero2: 'understand',
@@ -66,6 +71,11 @@ export default {
     email: 'Email',
     send: 'Send login link',
     google: 'Continue with Google',
+    apple: 'Continue with Apple',
+    soon: 'Coming soon',
+    emailPlaceholder: 'you@example.com',
+    errorGoogle: 'Sign-in with Google failed, try again or use email',
+    errorApple: 'Sign-in with Apple failed, try again or use email',
   },
   legal: {
     terms: 'Terms of Service',

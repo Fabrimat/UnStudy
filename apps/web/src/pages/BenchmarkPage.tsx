@@ -4,6 +4,7 @@ import Markdown from 'react-markdown';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError, BenchmarkDetail, lengthLabel, Lane, laneActive, LANGUAGES, methodLabel, PhaseUsage, Scores, useMethods } from '../api';
 import { fmt, t } from '../i18n';
+import { remarkMark } from '../ui';
 
 const fmtDuration = (ms: number | null) => {
   if (ms === null || ms === undefined) return '—';
@@ -266,7 +267,7 @@ function LaneOutput({ lane: l }: { lane: Lane }) {
       {done && content.isPending && <p className="text-sm text-gray-600">{t('common.loading')}</p>}
       {content.data && (
         <div className="prose-summary max-h-[70vh] overflow-y-auto rounded border p-3">
-          <Markdown disallowedElements={['img']}>{content.data}</Markdown>
+          <Markdown remarkPlugins={[remarkMark]} disallowedElements={['img']}>{content.data}</Markdown>
         </div>
       )}
     </div>

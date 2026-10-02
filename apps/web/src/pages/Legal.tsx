@@ -18,6 +18,15 @@ export function LegalLinks() {
   );
 }
 
+export function Copyright() {
+  return (
+    <div className="flex flex-col gap-1 pb-2">
+      <p>© {new Date().getFullYear()} <a href="https://www.larosa.work" target="_blank" rel="noopener" className="underline underline-offset-[3px]">Fabrizio La Rosa</a> · {t('footer.vat')} BE1031214819 · {t('footer.city')}</p>
+      <p className="flex items-center gap-1.5">{t('footer.builtWith')} <svg width="14" height="14" viewBox="0 0 24 24" aria-label={t('footer.love')} role="img"><path d="M12 21s-7.5-4.6-9.6-9.2C1 8.5 3 5 6.4 5c2.1 0 3.7 1.2 5.6 3.3C13.900 6.200 15.500 5 17.600 5 21 5 23 8.500 21.600 11.800 19.500 16.400 12 21 12 21z" className="fill-accent" /></svg> {t('footer.by')} Fabrizio La Rosa</p>
+    </div>
+  );
+}
+
 // Text of the current version; "not published yet" on 404.
 function LegalText({ kind }: { kind: LegalKind }) {
   const doc = useLegal(kind);

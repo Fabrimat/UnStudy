@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { api, busy, Doc, JobWithDoc, Page, qs, Stats, uploadFile, useMe } from '../api';
-import { fmt, t } from '../i18n';
+import { fmt, phaseLabel, t } from '../i18n';
 import { DocChip } from '../ui';
 
 export default function Dashboard() {
@@ -95,7 +95,7 @@ export default function Dashboard() {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6A5F78" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5" /></svg>
                 <Link to={`/documents/${d.id}`} className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <span className="truncate font-medium">{d.filename}</span>
-                  <span className="font-mono text-xs text-muted">{d.status === 'analyzed' ? t('api.pagesCredits', { pages: d.pages ?? '', credits: d.credits ?? '' }) : fmt.date(d.createdAt)}</span>
+                  <span className="font-mono text-xs text-muted"><span title={fmt.date(d.createdAt)}>{d.pages != null && `${t('job.pages', { n: d.pages })} · `}{fmt.relative(d.createdAt)}</span></span>
                 </Link>
                 <DocChip d={d} />
               </li>
@@ -109,7 +109,7 @@ export default function Dashboard() {
               <Link key={j.id} to={`/jobs/${j.id}`} className="flex flex-col gap-2">
                 <span className="truncate font-medium">{j.document.filename}</span>
                 <span className="block h-3 overflow-hidden rounded-md bg-ink"><span className="block h-3 rounded-md bg-accent transition-all" style={{ width: `${j.progress}%` }} /></span>
-                <span className="flex justify-between gap-3 text-[13px] text-[#4A4058]"><span>{j.status === 'queued' ? t('common.waitingInQueue') : j.phase}</span><span className="font-mono">{j.progress}%</span></span>
+                <span className="flex justify-between gap-3 text-[13px] text-[#4A4058]"><span>{j.status === 'queued' ? t('common.waitingInQueue') : phaseLabel(j.phase)}</span><span className="font-mono">{j.progress}%</span></span>
               </Link>
             ))}
           </section>

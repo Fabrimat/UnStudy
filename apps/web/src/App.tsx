@@ -12,7 +12,7 @@ import DocumentPage from './pages/DocumentPage';
 import Documents from './pages/Documents';
 import JobPage from './pages/JobPage';
 import Jobs from './pages/Jobs';
-import Accept, { LegalLinks, LegalPage } from './pages/Legal';
+import Accept, { Copyright, LegalLinks, LegalPage } from './pages/Legal';
 import Login from './pages/Login';
 import Methods from './pages/Methods';
 import Settings from './pages/Settings';
@@ -79,7 +79,7 @@ function RequireUser() {
       <div className="mx-auto w-full min-w-0 max-w-[1240px] flex-1"><Outlet /></div>
       <footer className="mx-auto w-full max-w-[1240px] border-t border-line pt-2 text-[13px] text-muted">
         <LegalLinks />
-        <p className="pb-2">© 2026 {t('common.appName')}</p>
+        <Copyright />
       </footer>
     </div>
   );

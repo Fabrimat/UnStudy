@@ -5,6 +5,7 @@ import Pager from '../../Pager';
 import Select from '../../Select';
 import { t } from '../../i18n';
 import { openAdminDownload, useAdminJob, useAdminJobs } from '../../api';
+import { remarkMark } from '../../ui';
 import { Err, Field, fmtCost, fmtDate, fmtDuration, fmtNum, Table, useFilters } from './ui';
 
 const STATUSES = [['', t('common.allStatuses')], ['queued', t('admin.jobs.queued')], ['running', t('admin.jobs.running')], ['done', t('admin.jobs.done')], ['failed', t('admin.jobs.failed')]] as const;
@@ -128,7 +129,7 @@ export function AdminJobPage() {
             <button onClick={() => download('docx')} className="rounded bg-black px-4 py-2 text-white">{t('admin.jobs.downloadDocx')}</button>
           </div>
           {error && <p className="text-red-600">{error}</p>}
-          {content && <div className="prose-summary rounded border bg-white p-4"><Markdown disallowedElements={['img']}>{content}</Markdown></div>}
+          {content && <div className="prose-summary rounded border bg-white p-4"><Markdown remarkPlugins={[remarkMark]} disallowedElements={['img']}>{content}</Markdown></div>}
         </div>
       )}
     </section>

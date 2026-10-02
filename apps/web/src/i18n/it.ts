@@ -53,6 +53,11 @@ const it: DeepStrings<typeof en> = {
     rejected: 'Rifiutato: {reason}',
     pagesCredits: '{pages} pagine · {credits} crediti',
   },
+  phase: {
+    chapter: 'Riassunto del capitolo {i} di {n}', reading: 'Lettura pagina {i} di {n}', judging: 'Valutazione del capitolo {i} di {n}',
+    saving: 'Salvataggio', starting: 'Avvio', retrying: 'Nuovo tentativo', draft: 'bozza', factCheck: 'verifica dei fatti',
+  },
+  footer: { vat: 'P. IVA', city: 'Gand, Belgio', builtWith: 'Fatto con', by: 'da', love: 'amore' },
   nav: {
     home: 'Home', docs: 'Doc', more: 'Altro',
     dashboard: 'Dashboard', documents: 'Documenti', summaries: 'Riassunti', credits: 'Crediti', methods: 'Metodi',
@@ -60,7 +65,7 @@ const it: DeepStrings<typeof en> = {
   },
   login: {
     signIn: 'Accedi',
-    intro: 'Usa il tuo account Google, oppure ricevi un link di accesso via email. Nessuna password da ricordare.',
+    intro: 'Usa il tuo account Google o Apple, oppure ricevi un link di accesso via email. Nessuna password da ricordare.',
     orEmail: 'oppure con email',
     hero1: 'Studia meno,',
     hero2: 'capisci',
@@ -69,6 +74,11 @@ const it: DeepStrings<typeof en> = {
     email: 'Email',
     send: 'Invia link di accesso',
     google: 'Continua con Google',
+    apple: 'Continua con Apple',
+    soon: 'Presto disponibile',
+    emailPlaceholder: 'nome@esempio.com',
+    errorGoogle: "Accesso con Google non riuscito, riprova o usa l'email",
+    errorApple: "Accesso con Apple non riuscito, riprova o usa l'email",
   },
   legal: {
     terms: 'Termini di servizio',

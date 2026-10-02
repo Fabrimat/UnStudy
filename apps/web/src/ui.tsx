@@ -22,3 +22,16 @@ export function DocChip({ d }: { d: Doc }) {
   const tone = d.status === 'rejected' || uploadFailed(d) || job?.status === 'failed' ? 'bad' : job?.status === 'done' ? 'done' : busy(d) ? 'run' : 'idle';
   return <Chip tone={tone}>{d.status === 'analyzed' && !job ? t('documents.ready') : docStatus(d)}</Chip>;
 }
+
+// Renders ==key sentence== as <mark> (remark-rehype honors data.hName).
+type MdNode = { type: string; value?: string; children?: MdNode[]; data?: { hName: string } };
+export function remarkMark() {
+  const walk = (n: MdNode) => {
+    if (!n.children) return;
+    n.children = n.children.flatMap((c): MdNode[] => {
+      if (c.type !== 'text') { walk(c); return [c]; }
+      return c.value!.split(/==([^=\n]+)==/).map((v, i): MdNode => (i % 2 ? { type: 'emphasis', data: { hName: 'mark' }, children: [{ type: 'text', value: v }] } : { type: 'text', value: v })).filter((x) => x.type !== 'text' || x.value);
+    });
+  };
+  return walk;
+}
