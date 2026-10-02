@@ -156,14 +156,52 @@ def test_stale_jobs_are_requeued_or_refunded(conn, storage, settings):
     assert job(conn, dead_id)["status"] == "failed" and balance(conn, user_b) == 2
 
 
-def test_stale_lab_job_fails_without_retry_or_ledger_rows(conn, storage, settings):
+def test_stale_lab_job_is_requeued_then_fails_without_ledger_rows(conn, storage, settings):
     user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", attempts=1)
     _as_lab_job(conn, user, doc_id, job_id)
     conn.execute("""UPDATE "Job" SET status = 'running', "heartbeatAt" = now() - interval '20 minutes'""")
+    assert db.recover_stale(conn) == 1  # a dead worker is not the model's fault
+    assert job(conn, job_id)["status"] == "queued"
+    conn.execute("""UPDATE "Job" SET status = 'running', attempts = %s, "heartbeatAt" = now() - interval '20 minutes'""",
+                 (db.MAX_ATTEMPTS,))
     assert db.recover_stale(conn) == 1
     assert job(conn, job_id)["status"] == "failed"
     assert job(conn, job_id)["error"].startswith("worker stopped responding (during: ")
     assert conn.execute('SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s', (job_id,)).fetchone()["n"] == 0
+
+
+def test_shutdown_requeues_held_jobs_fenced_by_attempts(conn, storage, settings):
+    user, doc_id, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed")
+    _as_lab_job(conn, user, doc_id, job_id)
+    held = db.claim(conn, "summarize")
+    db.hold({**held, "attempts": held["attempts"] + 1})  # wrong attempts: no-op
+    assert db.requeue_held(conn) == 0 and job(conn, job_id)["status"] == "running"
+    db.release(held)
+    db.hold(held)
+    assert db.requeue_held(conn) == 1
+    row = job(conn, job_id)
+    assert (row["status"], row["phase"], row["attempts"]) == ("queued", "retrying", held["attempts"])
+    db.release(held)
+    assert db.requeue_held(conn) == 0
+
+
+def test_job_cancelled_mid_run_is_dropped_without_further_writes(conn, storage, settings):
+    user, _, job_id = seed(conn, storage, TEXT_PDF, kind="summarize", doc_status="analyzed", credits=3)
+
+    class CancelledByAdmin(FakeClient):
+        def create(self, **kw):
+            if not self.calls:  # the API cancels the job while the first call runs
+                conn.execute("""UPDATE "Job" SET status = 'failed', phase = 'failed', error = 'cancelled by admin' WHERE id = %s""",
+                             (job_id,))
+            return super().create(**kw)
+
+    client = CancelledByAdmin()
+    run_one(conn, storage, settings, "summarize", client)  # must return, not raise
+    row = job(conn, job_id)
+    assert (row["status"], row["error"], row["attempts"]) == ("failed", "cancelled by admin", 1)
+    assert conn.execute("""SELECT count(*) AS n FROM "CreditLedger" WHERE "jobId" = %s AND type = 'refund'""",
+                        (job_id,)).fetchone()["n"] == 0
+    assert len(client.calls) == 1  # no LLM call after the cancellation was noticed
 
 
 def test_fresh_running_jobs_are_left_alone(conn, storage, settings):

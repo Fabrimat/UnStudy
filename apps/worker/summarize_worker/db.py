@@ -32,11 +32,46 @@ def claim(conn, kind: str, user_only: bool = False) -> dict | None:
             RETURNING *""", (kind,)).fetchone()
 
 
-def progress(conn, job_id, percent: int, phase: str, attempts: int) -> None:
+class JobGone(BaseException):
+    """The job was cancelled (failed by an admin) or reclaimed: stop working on it, write nothing more.
+    BaseException on purpose: the retry loop in call_model and the per-stage `except Exception` fallbacks
+    must not swallow it."""
+
+
+_held: dict = {}  # job id -> attempts, for the jobs this process is running right now
+_held_lock = threading.Lock()
+
+
+def hold(job: dict) -> None:
+    with _held_lock:
+        _held[job["id"]] = job["attempts"]
+
+
+def release(job: dict) -> None:
+    with _held_lock:
+        _held.pop(job["id"], None)
+
+
+def requeue_held(conn) -> int:
+    """Shutdown (SIGTERM): hand every job this process holds back to the queue, user and Lab alike, whatever
+    MAX_ATTEMPTS says: a redeploy is not the job's fault. Fenced; attempts stays monotonic (the fence relies on it)."""
+    with _held_lock:
+        held = list(_held.items())
+    return sum(requeue(conn, job_id, attempts) for job_id, attempts in held)
+
+
+def requeue(conn, job_id, attempts: int) -> int:
+    return conn.execute("""UPDATE "Job" SET status = 'queued', phase = 'retrying'
+                           WHERE id = %s AND status = 'running' AND attempts = %s""", (job_id, attempts)).rowcount
+
+
+def progress(conn, job_id, percent: int, phase: str, attempts: int) -> bool:
+    """False: the fenced UPDATE hit no row (job cancelled or reclaimed)."""
     # Fenced by attempts: a worker whose claim was reclaimed by recover_stale (attempts bumped by
     # the new claim) must not be able to move progress/phase/heartbeat for the new claim's run.
-    conn.execute("""UPDATE "Job" SET progress = %s, phase = %s, "heartbeatAt" = now()
-                    WHERE id = %s AND status = 'running' AND attempts = %s""", (percent, phase, job_id, attempts))
+    return conn.execute("""UPDATE "Job" SET progress = %s, phase = %s, "heartbeatAt" = now()
+                    WHERE id = %s AND status = 'running' AND attempts = %s""",
+                        (percent, phase, job_id, attempts)).rowcount > 0
 
 
 def get_document(conn, doc_id) -> dict:
@@ -122,7 +157,7 @@ def _fail(conn, job_id, attempts: int | None = None, model: str | None = None, d
                   error = COALESCE(%s::text || ' (during: ' || COALESCE(phase, '?') || ')',
                                    CASE WHEN kind = 'summarize' THEN %s ELSE %s END), {_TOTALS},
                   model = COALESCE(%s, model)
-           WHERE id = %s AND status IN ('running', 'queued'){fence}
+           WHERE id = %s AND status = 'running'{fence}
            RETURNING id, "userId", "documentId", kind, credits""", params).fetchone()
     if not row:
         return
@@ -151,13 +186,14 @@ def fail_or_retry(conn, job: dict, model: str | None = None) -> None:
 
 
 def recover_stale(conn, stale_after: str = "10 minutes") -> int:
-    """Jobs whose worker died (no heartbeat): requeue or fail+refund. Returns how many were handled."""
+    """Jobs whose worker died (no heartbeat): requeue or fail+refund. Returns how many were handled.
+    Lab lanes are requeued too: a dead worker (OOM, SIGKILL) is not the model's fault."""
     with conn.transaction():
         stale = conn.execute("""SELECT id, attempts, "benchmarkId" FROM "Job"
                                 WHERE status = 'running' AND "heartbeatAt" < now() - %s::interval
                                 FOR UPDATE SKIP LOCKED""", (stale_after,)).fetchall()
         for row in stale:
-            if row["attempts"] < MAX_ATTEMPTS and row["benchmarkId"] is None:  # Lab lanes never retry
+            if row["attempts"] < MAX_ATTEMPTS:
                 conn.execute("""UPDATE "Job" SET status = 'queued', phase = 'retrying' WHERE id = %s""", (row["id"],))
             else:
                 _fail(conn, row["id"], detail=None if row["benchmarkId"] is None else "worker stopped responding")

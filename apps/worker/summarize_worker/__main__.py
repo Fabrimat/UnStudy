@@ -1,6 +1,7 @@
 """python -m summarize_worker — one analyze thread plus SUMMARIZE_CONCURRENCY summarize threads."""
 import contextlib
 import logging
+import signal
 import sys
 import threading
 import time
@@ -51,7 +52,15 @@ def run(kind: str, settings: Settings, stop: threading.Event, user_only: bool = 
                 stop.wait(POLL_SECONDS)
                 continue
             log.info(f"{kind}: job {job['id']} claimed (doc {job['documentId']}, attempt {job['attempts']})")
-            process(conn, storage, settings, {p.id: c for p, c in clients.items()}, job, models, providers)
+            db.hold(job)
+            if stop.is_set():  # claimed while shutting down, maybe after requeue_held ran: hand it back now
+                db.requeue(conn, job["id"], job["attempts"])
+                db.release(job)
+                continue
+            try:
+                process(conn, storage, settings, {p.id: c for p, c in clients.items()}, job, models, providers)
+            finally:
+                db.release(job)
         except psycopg.OperationalError:
             log.error("database connection lost, will reconnect", exc_info=True)  # database restarted
             conn = None
@@ -78,13 +87,25 @@ def main() -> None:
     hosts = ", ".join(f"{p.id}={urlsplit(p.base_url).hostname or p.base_url}" for p in settings.providers)  # never keys
     log.info(f"worker started (model {settings.default_model}, providers {hosts}, "
              f"summarize concurrency {n}, poll {POLL_SECONDS}s)")
+    signal.signal(signal.SIGTERM, lambda *_: stop.set())  # Railway redeploy; SIGINT is KeyboardInterrupt
     try:
-        while all(t.is_alive() for t in threads):
+        while not stop.is_set() and all(t.is_alive() for t in threads):
             stop.wait(1)
     except KeyboardInterrupt:
-        stop.set()  # a job interrupted mid-run is picked up again by recover_stale
+        stop.set()
     if not stop.is_set():
         sys.exit(1)  # a thread died unexpectedly: exit non-zero so the platform restarts the worker
+    shutdown(settings)
+
+
+def shutdown(settings: Settings) -> None:
+    """Signal-driven stop: requeue the jobs this process still holds right away (fresh connection), then exit 0.
+    Worker threads are daemons and die with the process."""
+    try:
+        with psycopg.connect(settings.database_url, autocommit=True, row_factory=dict_row, connect_timeout=5) as conn:
+            log.info(f"shutting down, requeued {db.requeue_held(conn)} running job(s)")
+    except Exception:
+        log.error("could not requeue running jobs on shutdown (recover_stale will)", exc_info=True)
 
 
 if __name__ == "__main__":

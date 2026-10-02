@@ -111,7 +111,7 @@ def calls(monkeypatch):
     monkeypatch.setattr(handlers, "to_docx", lambda md: b"docx")
     monkeypatch.setattr(handlers.db, "get_document", lambda *a: DOC)
     for name in ("progress", "record_call", "finish_analyze", "finish_summary", "save_evaluation"):
-        monkeypatch.setattr(handlers.db, name, lambda *a, _n=name, **k: calls.append(_n))
+        monkeypatch.setattr(handlers.db, name, lambda *a, _n=name, **k: calls.append(_n) or True)  # progress must say True: not cancelled
     return calls
 
 

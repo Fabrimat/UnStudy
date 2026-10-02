@@ -95,11 +95,16 @@ def save_lab_prompt(storage, job: dict, dump: str) -> None:
         log.warning(f"could not store the prompts of Lab job {job['id']}", exc_info=True)
 
 
+def _beat(conn, job_id, percent: int, phase: str, attempts: int) -> None:
+    if not db.progress(conn, job_id, percent, phase, attempts):
+        raise db.JobGone(job_id)
+
+
 def _page_heartbeat(conn, job_id, analyze: bool, attempts: int):
     # extraction with OCR can outlast the 10-minute stale window, so every page updates the heartbeat
     def on_page(i: int, n: int):
         log.debug(f"heartbeat: job {job_id} page {i}/{n}")
-        db.progress(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}", attempts)
+        _beat(conn, job_id, int(i / n * 99) if analyze else 0, f"Reading page {i}/{n}", attempts)
     return on_page
 
 
@@ -178,9 +183,9 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
     markdown, warnings, summaries = run(
         phase(draft_entry), chapters, instructions, verify=phase(verify_entry),
         length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
-        on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage,
+        on_progress=lambda percent, phase: _beat(conn, job["id"], percent, phase, job["attempts"]), usage=usage,
         on_call=on_call)
-    db.progress(conn, job["id"], 99, "Saving", job["attempts"])
+    _beat(conn, job["id"], 99, "Saving", job["attempts"])
     prefix = f"users/{job['userId']}/results/{job['id']}"
     storage.put(f"{prefix}.md", markdown.encode("utf-8"), "text/markdown; charset=utf-8")
     storage.put(f"{prefix}.docx", to_docx(markdown), DOCX_MIME)
@@ -190,8 +195,8 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
         if judge_phase:
             try:
                 evaluation = evaluate(judge_phase, chapters, summaries, percent, usage=usage, on_call=on_call,
-                                      on_progress=lambda i, n: db.progress(conn, job["id"], 99, f"Judging chapter {i}/{n}",
-                                                                           job["attempts"]))
+                                      on_progress=lambda i, n: _beat(conn, job["id"], 99, f"Judging chapter {i}/{n}",
+                                                                     job["attempts"]))
             except Exception as e:  # evaluate only raises on bugs or a dead DB: still never fail the lane
                 log.warning(f"judge crashed for job {job['id']}", exc_info=True)
                 evaluation["error"] = f"judge failed: {type(e).__name__}"
@@ -221,6 +226,8 @@ def process(conn, storage, settings, clients: dict, job: dict, models=None, prov
             handle_analyze(conn, storage, settings, job)
         else:
             handle_summarize(conn, storage, settings, clients, job, draft, verify, providers, models)
+    except db.JobGone:
+        log.info(f"job {job['id']} cancelled or reclaimed, dropped")  # the row is not ours: no fail, no retry, no refund
     except UnknownModel as e:
         log.error(f"job {job['id']} failed (unknown model id, refunded, no retry)")
         db.fail(conn, job, None, _lab_detail(job, e))
