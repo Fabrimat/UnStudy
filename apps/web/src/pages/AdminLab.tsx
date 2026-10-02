@@ -11,9 +11,9 @@ import {
 import { fmt, t } from '../i18n';
 
 const MAX_LANES = 8;
-type LaneDraft = { draft: string; verify: string }; // verify: 'same' | 'none' | model id
+type LaneDraft = { draft: string; verify: string; harness: boolean }; // verify: 'same' | 'none' | model id
 
-const toSpec = (l: LaneDraft): LaneSpec => ({ draft: l.draft, verify: l.verify === 'same' ? l.draft : l.verify === 'none' ? null : l.verify });
+const toSpec = (l: LaneDraft): LaneSpec => ({ draft: l.draft, verify: l.verify === 'same' ? l.draft : l.verify === 'none' ? null : l.verify, ...(l.harness && { harness: true }) });
 
 export default function AdminLab() {
   return (
@@ -60,7 +60,7 @@ function NewRun() {
   const words = allSelected ? doc?.words ?? 0 : selected.reduce((n, i) => n + (chapterList[i]?.words ?? 0), 0);
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const firstModel = models[0]?.id ?? '';
-  const shown: LaneDraft[] = lanes.length ? lanes : firstModel ? [{ draft: firstModel, verify: 'same' }] : [];
+  const shown: LaneDraft[] = lanes.length ? lanes : firstModel ? [{ draft: firstModel, verify: 'same', harness: false }] : [];
   const setLane = (i: number, patch: Partial<LaneDraft>) => setLanes(shown.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const start = useMutation({
@@ -157,7 +157,7 @@ function NewRun() {
             <button
               type="button"
               disabled={models.length === 0}
-              onClick={() => setLanes(models.slice(0, MAX_LANES).map((m) => ({ draft: m.id, verify: 'same' })))}
+              onClick={() => setLanes(models.slice(0, MAX_LANES).map((m) => ({ draft: m.id, verify: 'same', harness: false })))}
               className="rounded border bg-white px-3 py-1 disabled:opacity-50"
               title={models.length > MAX_LANES ? t('adminLab.onlyFirst', { max: MAX_LANES }) : undefined}
             >
@@ -166,7 +166,7 @@ function NewRun() {
             <button
               type="button"
               disabled={shown.length >= MAX_LANES || !firstModel}
-              onClick={() => setLanes([...shown, { draft: firstModel, verify: 'same' }])}
+              onClick={() => setLanes([...shown, { draft: firstModel, verify: 'same', harness: false }])}
               className="rounded border bg-white px-3 py-1 disabled:opacity-50"
             >
               {t('adminLab.addLane')}
@@ -185,14 +185,17 @@ function NewRun() {
               </div>
               <div>
                 <Select
-                  label={t('adminLab.factCheckModel')}
+                  label={t(l.harness ? 'adminLab.criticModel' : 'adminLab.factCheckModel')}
                   value={l.verify}
                   onChange={(x) => setLane(i, { verify: x })}
-                  options={[['same', t('adminLab.sameAsDraft')], ['none', t('adminLab.noneSkip')], ...modelOpts]}
+                  options={[['same', t('adminLab.sameAsDraft')], ['none', t(l.harness ? 'adminLab.noneCritic' : 'adminLab.noneSkip')], ...modelOpts]}
                 />
                 <p className="mt-1 text-xs text-gray-600">
-                  {v ? <>{v.provider} · <span className="font-mono">{v.model}</span> · {priceHint(v)}</> : t('adminLab.noFactCheckPass')}
+                  {v ? <>{v.provider} · <span className="font-mono">{v.model}</span> · {priceHint(v)}</> : t(l.harness ? 'adminLab.criticUsesDraft' : 'adminLab.noFactCheckPass')}
                 </p>
+                <label className="mt-2 block text-sm">
+                  <input type="checkbox" checked={l.harness} onChange={(e) => setLane(i, { harness: e.target.checked })} /> {t('adminLab.harness')}
+                </label>
               </div>
               <button
                 type="button"

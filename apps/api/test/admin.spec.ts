@@ -91,6 +91,18 @@ describe('admin lab', () => {
     expect(await prisma.creditLedger.count({ where: { userId: a.user.id } })).toBe(0);
   });
 
+  it('flags harness lanes in job options and detail, rejects non-boolean', async () => {
+    const a = await admin();
+    const d = await doc(a.user.id);
+    const lanes = [{ draft: 'fast', verify: 'big', harness: true }, LANES[0]];
+    const res = await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes }).expect(201);
+    expect(res.body.lanes.map((l: { harness: boolean }) => l.harness)).toEqual([true, false]);
+    const jobs = (await prisma.job.findMany({ where: { benchmarkId: res.body.id } })).sort((x, y) => (x.options as { lane: number }).lane - (y.options as { lane: number }).lane);
+    expect(jobs[0].options).toMatchObject({ harness: true, phaseModels: { draft: 'fast', verify: 'big' } });
+    expect(jobs[1].options).not.toHaveProperty('harness');
+    await post(a.cookie, '/api/admin/benchmarks', { documentId: d.id, ...SETTINGS, lanes: [{ ...LANES[0], harness: 'yes' }] }).expect(400);
+  });
+
   it('snapshots custom methods and validates chosen chapters like user jobs', async () => {
     const a = await admin();
     const d = await doc(a.user.id);

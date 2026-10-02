@@ -181,6 +181,10 @@ export default {
     addLane: '+ Add lane',
     draftModel: 'Draft model',
     factCheckModel: 'Fact-check model',
+    harness: 'Multi-stage harness',
+    criticModel: 'Critic model',
+    noneCritic: 'None — critics use the draft model',
+    criticUsesDraft: 'Critics use the draft model',
     sameAsDraft: 'Same as draft',
     noneSkip: 'None — skip fact-check',
     judgeModel: 'Judge model (optional)',
@@ -275,6 +279,7 @@ export default {
     },
   },
   benchmark: {
+    harness: 'harness',
     rename: 'Rename',
     namePlaceholder: 'Run name',
     backToLab: '← Lab',

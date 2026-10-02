@@ -184,6 +184,10 @@ const it: DeepStrings<typeof en> = {
     addLane: '+ Aggiungi corsia',
     draftModel: 'Modello di bozza',
     factCheckModel: 'Modello di verifica',
+    harness: 'Harness multi-stadio',
+    criticModel: 'Modello critico',
+    noneCritic: 'Nessuno — i critici usano il modello di bozza',
+    criticUsesDraft: 'I critici usano il modello di bozza',
     sameAsDraft: 'Come la bozza',
     noneSkip: 'Nessuno: salta la verifica',
     judgeModel: 'Modello giudice (facoltativo)',
@@ -278,6 +282,7 @@ const it: DeepStrings<typeof en> = {
     },
   },
   benchmark: {
+    harness: 'harness',
     rename: 'Rinomina',
     namePlaceholder: 'Nome esecuzione',
     backToLab: '← Lab',

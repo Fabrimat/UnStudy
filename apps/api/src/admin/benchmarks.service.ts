@@ -46,7 +46,7 @@ export class BenchmarksService {
         data: {
           userId: user.id,
           documentId: doc.id,
-          options: { ...(dto.name && { name: dto.name }), ...publicOptions, ...(dto.judge && { judge: dto.judge }), lanes: dto.lanes.map(({ draft, verify }) => ({ draft, verify })) },
+          options: { ...(dto.name && { name: dto.name }), ...publicOptions, ...(dto.judge && { judge: dto.judge }), lanes: dto.lanes.map(({ draft, verify, harness }) => ({ draft, verify, ...(harness && { harness: true }) })) },
         },
       });
       // Free and unmetered: credits 0, no ledger rows; benchmark jobs are skipped by the MAX_ACTIVE_SUMMARIES count.
@@ -58,7 +58,7 @@ export class BenchmarksService {
             kind: 'summarize',
             credits: 0,
             benchmarkId: bench.id,
-            options: settings.build({ modelId: l.draft, model: picked.get(l.draft)!.model, phaseModels: { draft: l.draft, verify: l.verify }, lane, ...(dto.judge && { judge: dto.judge }) }),
+            options: settings.build({ modelId: l.draft, model: picked.get(l.draft)!.model, phaseModels: { draft: l.draft, verify: l.verify }, lane, ...(l.harness && { harness: true }), ...(dto.judge && { judge: dto.judge }) }),
           },
         });
       }
@@ -107,13 +107,14 @@ export class BenchmarksService {
     const usages = await usageByJob(this.prisma, jobIds);
     const lanes = b.jobs
       .map((j) => {
-        const o = j.options as { lane?: number; modelId?: string; phaseModels?: Lane; judge?: string };
+        const o = j.options as { lane?: number; modelId?: string; phaseModels?: Lane; judge?: string; harness?: boolean };
         const pm: Lane = o.phaseModels ?? { draft: o.modelId ?? '', verify: null };
         const usage = usages.get(j.id)!;
         const costUsd = jobCost(usage, { draft: entryOf(pm.draft), verify: pm.verify ? entryOf(pm.verify) : undefined });
         const judgeCostUsd = usage.judge.calls ? tokensCost(o.judge ? entryOf(o.judge) : undefined, usage.judge.inputTokens, usage.judge.outputTokens) : 0;
         return {
           index: o.lane ?? 0,
+          harness: o.harness === true,
           jobId: j.id,
           draft: modelView(entryOf(pm.draft), pm.draft),
           verify: pm.verify ? modelView(entryOf(pm.verify), pm.verify) : null,
@@ -156,7 +157,7 @@ export class BenchmarksService {
       const key = jobs.find((j) => j.id === l.jobId)?.resultMdKey;
       const md = l.status === 'done' && key ? await this.storage.getObject(key) : null;
       const prompt = await this.storage.getObject(labPromptKey(user.id, id, l.jobId));
-      const base = `${String(l.index + 1).padStart(2, '0')}-${safe(l.draft.modelId)}${l.verify ? `-${safe(l.verify.modelId)}` : ''}`;
+      const base = `${String(l.index + 1).padStart(2, '0')}-${safe(l.draft.modelId)}${l.verify ? `-${safe(l.verify.modelId)}` : ''}${l.harness ? '-harness' : ''}`;
       if (md) files.push({ name: `results/${base}.md`, data: md });
       if (prompt) files.push({ name: `prompts/${base}.txt`, data: prompt });
     }

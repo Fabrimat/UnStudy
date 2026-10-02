@@ -18,6 +18,11 @@ export class LaneDto {
   @IsString()
   @MaxLength(32)
   verify: string | null;
+
+  // multi-stage harness; verify is then the critic model
+  @IsOptional()
+  @IsBoolean()
+  harness?: boolean;
 }
 
 export class CreateBenchmarkDto extends JobSettingsDto {
