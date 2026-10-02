@@ -335,3 +335,15 @@ model EmailTemplate {
   updatedAt   DateTime @updatedAt
   updatedById String
 }
+
+/// Saved Lab setup (lanes + judge), applied from Admin > Lab. Model ids are not FKs: the catalogue may change.
+model LabPreset {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  /// judge model id
+  judge     String?
+  /// [{ draft, verify | null, harness? }], same shape as the benchmark lanes
+  lanes     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

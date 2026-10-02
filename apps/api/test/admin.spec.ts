@@ -392,3 +392,54 @@ describe('admin lab', () => {
     });
   });
 });
+
+describe('admin lab presets', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  beforeAll(async () => {
+    app = await createApp();
+    prisma = app.get(PrismaService);
+  });
+  afterAll(() => app.close());
+  beforeEach(async () => {
+    await resetDb(prisma);
+    await prisma.labPreset.deleteMany({ where: { name: { startsWith: 'T ' } } });
+  });
+
+  const http = () => request(app.getHttpServer());
+  const post = (cookie: string, body: object) => http().post('/api/admin/lab-presets').set('Origin', ORIGIN).set('Cookie', cookie).send(body);
+  const admin = async () => {
+    const a = await loginAs(app, 'admin@x.com');
+    await prisma.user.update({ where: { id: a.user.id }, data: { role: 'admin' } });
+    return a;
+  };
+
+  it('lists the seeded presets', async () => {
+    const a = await admin();
+    const res = await http().get('/api/admin/lab-presets').set('Cookie', a.cookie).expect(200);
+    const four = res.body.find((p: any) => p.name.startsWith('Benchmark 4 '));
+    expect(four.judge).toBe('gpt-6-sol');
+    expect(four.lanes).toHaveLength(8);
+    expect(res.body.find((p: any) => p.name.startsWith('Benchmark 4b')).lanes).toHaveLength(6);
+  });
+
+  it('creates, rejects a duplicate name, validates lanes and deletes', async () => {
+    const a = await admin();
+    const lanes = [{ draft: 'x', verify: null }, { draft: 'y', verify: 'y', harness: true }];
+    const made = await post(a.cookie, { name: ' T one ', judge: 'x', lanes }).expect(201);
+    expect(made.body).toMatchObject({ name: 'T one', judge: 'x', lanes: [{ draft: 'x', verify: null }, { draft: 'y', verify: 'y', harness: true }] });
+    await post(a.cookie, { name: 'T one', lanes }).expect(409);
+    await post(a.cookie, { name: 'T two', lanes: [] }).expect(400);
+    await post(a.cookie, { name: 'T two', lanes: Array(9).fill(lanes[0]) }).expect(400);
+    await post(a.cookie, { name: 'T two', lanes: [{ draft: 1 }] }).expect(400);
+    await post(a.cookie, { name: '', lanes }).expect(400);
+    await http().delete(`/api/admin/lab-presets/${made.body.id}`).set('Origin', ORIGIN).set('Cookie', a.cookie).expect(204);
+    await http().delete(`/api/admin/lab-presets/${made.body.id}`).set('Origin', ORIGIN).set('Cookie', a.cookie).expect(404);
+  });
+
+  it('is hidden from non-admins (404, like every admin route)', async () => {
+    const u = await loginAs(app, 'u@x.com');
+    await http().get('/api/admin/lab-presets').set('Cookie', u.cookie).expect(404);
+    await post(u.cookie, { name: 'T x', lanes: [{ draft: 'x', verify: null }] }).expect(404);
+  });
+});

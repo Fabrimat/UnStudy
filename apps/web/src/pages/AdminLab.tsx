@@ -6,7 +6,7 @@ import Pager from '../Pager';
 import Select from '../Select';
 import {
   AdminModel, api, BenchmarkDetail, BenchmarkSummary, Doc, EXTRAS, Extra, LANGUAGES, LaneSpec, Page, priceHint, qs, styleOptions,
-  useAdminModels, useMethods,
+  useAdminModels, useDeleteLabPreset, useLabPresets, useMethods, useSaveLabPreset,
 } from '../api';
 import { fmt, t } from '../i18n';
 
@@ -54,6 +54,11 @@ function NewRun() {
   const [chapters, setChapters] = useState<number[] | null>(null); // null = all
   const [judge, setJudge] = useState('none');
   const [lanes, setLanes] = useState<LaneDraft[]>([]);
+  const saved = useLabPresets();
+  const savePreset = useSaveLabPreset();
+  const deletePreset = useDeleteLabPreset();
+  const [presetId, setPresetId] = useState('');
+  const [skipped, setSkipped] = useState(0);
 
   const chapterList = doc?.chapters ?? [];
   const selected = chapters ?? chapterList.map((_, i) => i);
@@ -70,6 +75,20 @@ function NewRun() {
     ['versus', () => models.slice(0, MAX_LANES / 2).flatMap((m) => [lane(m.id, false), lane(m.id, true)]), false],
     ['strongCritic', () => models.filter((m) => m.id !== judge).map((m) => lane(m.id, true, judge)), true],
   ];
+  const has = (id: string) => models.some((m) => m.id === id);
+  const applyPreset = (id: string) => {
+    setPresetId(id);
+    const p = saved.data?.find((x) => x.id === id);
+    if (!p) return setSkipped(0);
+    const ok = p.lanes.filter((l) => has(l.draft) && (l.verify === null || has(l.verify)));
+    setSkipped(p.lanes.length - ok.length);
+    setJudge(p.judge && has(p.judge) ? p.judge : 'none');
+    setLanes(ok.map((l) => ({ draft: l.draft, verify: l.verify === l.draft ? 'same' : l.verify ?? 'none', harness: !!l.harness })).slice(0, MAX_LANES));
+  };
+  const saveCurrent = () => {
+    const n = prompt(t('adminLab.presetName'), name.trim())?.trim();
+    if (n) savePreset.mutate({ name: n, ...(judge !== 'none' ? { judge } : {}), lanes: shown.map(toSpec) }, { onSuccess: (p) => { setPresetId(p.id); setSkipped(0); } });
+  };
   const setLane = (i: number, patch: Partial<LaneDraft>) => setLanes(shown.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const start = useMutation({
@@ -162,6 +181,24 @@ function NewRun() {
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-medium">{t('adminLab.lanes', { n: shown.length, max: MAX_LANES })}</h3>
+          <div className="flex w-full flex-wrap items-end gap-2 text-sm">
+            <div className="sm:w-1/2">
+              <Select label={t('adminLab.savedPreset')} value={presetId} onChange={applyPreset} options={[['', t('adminLab.noSavedPreset')], ...(saved.data ?? []).map((p) => [p.id, p.name] as const)]} />
+            </div>
+            <button type="button" disabled={savePreset.isPending || shown.length === 0} onClick={saveCurrent} className="rounded border bg-white px-3 py-2 disabled:opacity-50">
+              {t('adminLab.savePreset')}
+            </button>
+            <button
+              type="button"
+              disabled={!presetId || deletePreset.isPending}
+              onClick={() => { const p = saved.data?.find((x) => x.id === presetId); if (p && confirm(t('adminLab.confirmDeletePreset', { name: p.name }))) deletePreset.mutate(p.id, { onSuccess: () => setPresetId('') }); }}
+              className="rounded border bg-white px-3 py-2 disabled:opacity-50"
+            >
+              {t('adminLab.deletePreset')}
+            </button>
+            {skipped > 0 && <p className="text-xs text-amber-700">{t('adminLab.presetSkipped', { n: skipped })}</p>}
+            {(savePreset.error || deletePreset.error) && <p className="text-xs text-red-600">{(savePreset.error ?? deletePreset.error)!.message}</p>}
+          </div>
           <div className="flex gap-2 text-sm">
             {presets.map(([key, make, needsJudge]) => (
               <button

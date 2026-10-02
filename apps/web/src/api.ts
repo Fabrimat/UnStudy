@@ -343,6 +343,25 @@ export function useDeleteAdminProvider() {
   });
 }
 
+export type LabPreset = { id: string; name: string; judge: string | null; lanes: LaneSpec[] };
+export const useLabPresets = () => useQuery({ queryKey: ['admin', 'lab-presets'], queryFn: () => api<LabPreset[]>('/admin/lab-presets') });
+
+export function useSaveLabPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; judge?: string; lanes: LaneSpec[] }) => api<LabPreset>('/admin/lab-presets', { method: 'POST', body: JSON.stringify(v) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'lab-presets'] }),
+  });
+}
+
+export function useDeleteLabPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/admin/lab-presets/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'lab-presets'] }),
+  });
+}
+
 export const laneActive = (l: Lane) => l.status === 'queued' || l.status === 'running';
 
 export const priceHint = (m: AdminModel) =>

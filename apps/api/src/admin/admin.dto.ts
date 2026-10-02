@@ -314,3 +314,23 @@ export class EmailTemplateDto {
   @Length(1, 20_000)
   body: string;
 }
+
+export class CreateLabPresetDto {
+  @Transform(trim)
+  @IsString()
+  @Length(1, 80)
+  @Matches(/^[^\r\n]*$/, { message: 'name must be a single line' })
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  judge?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_LANES)
+  @ValidateNested({ each: true })
+  @Type(() => LaneDto)
+  lanes: LaneDto[];
+}
