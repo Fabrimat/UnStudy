@@ -10,6 +10,7 @@ import { AdminGuard } from './admin.guard';
 import { BenchmarksService } from './benchmarks.service';
 import { DocumentsAdminService } from './documents.admin.service';
 import { JobsAdminService } from './jobs.admin.service';
+import { LabPresetsService } from './lab-presets.service';
 import { ModelsAdminService } from './models.service';
 import { ProvidersAdminService } from './providers.service';
 import { StatsService } from './stats.service';
@@ -18,6 +19,6 @@ import { UsersAdminService } from './users.service';
 @Module({
   imports: [AuthModule, CreditsModule, JobsModule, StorageModule],
   controllers: [AdminController, AdminUsersController, AdminDataController],
-  providers: [AdminGuard, BenchmarksService, ModelsAdminService, ProvidersAdminService, UsersAdminService, DocumentsAdminService, JobsAdminService, StatsService],
+  providers: [AdminGuard, BenchmarksService, ModelsAdminService, ProvidersAdminService, UsersAdminService, DocumentsAdminService, JobsAdminService, StatsService, LabPresetsService],
 })
 export class AdminModule {}

@@ -23,6 +23,8 @@ COPY apps/api apps/api
 # Served by the API as the start-from texts; the worker owns the files.
 COPY apps/worker/summarize_worker/presets apps/worker/summarize_worker/presets
 
+# Railway passes its service variables as build args when declared: the web bundle shows the deployed commit.
+ARG RAILWAY_GIT_COMMIT_SHA
 RUN pnpm --filter @summarize/db build \
  && pnpm --filter @summarize/web build \
  && pnpm --filter @summarize/api build

@@ -25,7 +25,7 @@ export type Evaluation = {
   chapters: { index: number; title: string; scores: Scores | null; issues: string[] }[];
 };
 export type Lane = {
-  index: number; jobId: string; draft: LaneModel; verify: LaneModel | null;
+  index: number; harness: boolean; jobId: string; draft: LaneModel; verify: LaneModel | null;
   status: JobStatus; progress: number; phase: string; error: string | null;
   durationMs: number | null; createdAt: string; finishedAt: string | null; warnings: string[];
   usage: { draft: PhaseUsage; verify: PhaseUsage; judge: PhaseUsage }; costUsd: number | null;
@@ -39,7 +39,7 @@ export type BenchmarkDetail = {
   id: string; name: string | null; createdAt: string; options: Record<string, unknown>;
   document: { id: string; filename: string; words: number | null; pages: number | null }; lanes: Lane[];
 };
-export type LaneSpec = { draft: string; verify: string | null };
+export type LaneSpec = { draft: string; verify: string | null; harness?: boolean };
 export type Method = { id: string; name: string; instructions: string; createdAt: string; updatedAt: string };
 export type Chapter = { title: string; pageFrom: number | null; pageTo: number | null; words: number };
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
@@ -340,6 +340,25 @@ export function useDeleteAdminProvider() {
   return useMutation({
     mutationFn: (id: string) => api(`/admin/providers/${id}`, { method: 'DELETE' }),
     onSuccess: () => invalidateProviders(qc),
+  });
+}
+
+export type LabPreset = { id: string; name: string; judge: string | null; lanes: LaneSpec[] };
+export const useLabPresets = () => useQuery({ queryKey: ['admin', 'lab-presets'], queryFn: () => api<LabPreset[]>('/admin/lab-presets') });
+
+export function useSaveLabPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { name: string; judge?: string; lanes: LaneSpec[] }) => api<LabPreset>('/admin/lab-presets', { method: 'POST', body: JSON.stringify(v) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'lab-presets'] }),
+  });
+}
+
+export function useDeleteLabPreset() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/admin/lab-presets/${id}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'lab-presets'] }),
   });
 }
 

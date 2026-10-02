@@ -18,6 +18,11 @@ export class LaneDto {
   @IsString()
   @MaxLength(32)
   verify: string | null;
+
+  // multi-stage harness; verify is then the critic model
+  @IsOptional()
+  @IsBoolean()
+  harness?: boolean;
 }
 
 export class CreateBenchmarkDto extends JobSettingsDto {
@@ -308,4 +313,24 @@ export class EmailTemplateDto {
   @IsString()
   @Length(1, 20_000)
   body: string;
+}
+
+export class CreateLabPresetDto {
+  @Transform(trim)
+  @IsString()
+  @Length(1, 80)
+  @Matches(/^[^\r\n]*$/, { message: 'name must be a single line' })
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  judge?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_LANES)
+  @ValidateNested({ each: true })
+  @Type(() => LaneDto)
+  lanes: LaneDto[];
 }

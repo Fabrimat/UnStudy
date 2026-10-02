@@ -144,7 +144,7 @@ function MetricsTable({ lanes }: { lanes: Lane[] }) {
         <tbody className="divide-y">
           {lanes.map((l) => (
             <tr key={l.jobId} className="align-top">
-              <td className="px-3 py-2 font-mono">{laneLabel(l)}</td>
+              <td className="px-3 py-2 font-mono">{laneLabel(l)}{l.harness && <Badge />}</td>
               <td className="px-3 py-2"><ModelCell m={l.draft} /></td>
               <td className="px-3 py-2">{l.verify ? <ModelCell m={l.verify} /> : '—'}</td>
               <td className="min-w-32 px-3 py-2"><StatusCell lane={l} /></td>
@@ -180,6 +180,10 @@ function ScoreCell({ lane: l }: { lane: Lane }) {
       <div className="font-mono text-xs text-gray-600">{scoreLine(ev.scores)}</div>
     </>
   );
+}
+
+function Badge() {
+  return <span className="ml-1 rounded bg-indigo-100 px-1 text-xs font-normal text-indigo-800">{t('benchmark.harness')}</span>;
 }
 
 function ModelCell({ m }: { m: { label: string; provider: string; model: string } }) {
@@ -226,7 +230,7 @@ function LaneOutput({ lane: l }: { lane: Lane }) {
     <div className="min-w-0 space-y-2 rounded border bg-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold">
-          <span className="font-mono">{laneLabel(l)}</span> {l.draft.label}
+          <span className="font-mono">{laneLabel(l)}</span> {l.draft.label}{l.harness && <Badge />}
           {l.verify ? ` → ${l.verify.label}` : t('benchmark.noFactCheck')}
         </h3>
         {done && (

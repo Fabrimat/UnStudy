@@ -1,7 +1,7 @@
 import logging
 import time
 
-from . import db
+from . import db, harness
 from .docx import to_docx
 from .judge import evaluate
 from .llm import Usage
@@ -169,11 +169,13 @@ def handle_summarize(conn, storage, settings, clients: dict, job: dict, draft_en
         except Exception as e:
             log.warning(f"judge {judge_id!r} unusable for job {job['id']}: {e}")
             judge_error = f"judge unavailable: {e}"
+    use_harness = bool(opts.get("harness"))
+    run, dump = (harness.summarize_chapters, harness.prompts_dump) if use_harness else (summarize_chapters, prompts_dump)
     if lab:
-        save_lab_prompt(storage, job, prompts_dump(phase(draft_entry), phase(verify_entry), chapters, instructions,
-                                                  length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
-                                                  judge=judge_phase))
-    markdown, warnings, summaries = summarize_chapters(
+        save_lab_prompt(storage, job, dump(phase(draft_entry), phase(verify_entry), chapters, instructions,
+                                           length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
+                                           judge=judge_phase))
+    markdown, warnings, summaries = run(
         phase(draft_entry), chapters, instructions, verify=phase(verify_entry),
         length_percent=percent, bibliographic_line=opts.get("bibliographicLine"),
         on_progress=lambda percent, phase: db.progress(conn, job["id"], percent, phase, job["attempts"]), usage=usage,

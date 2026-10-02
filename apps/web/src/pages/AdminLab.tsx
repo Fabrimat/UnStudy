@@ -6,14 +6,15 @@ import Pager from '../Pager';
 import Select from '../Select';
 import {
   AdminModel, api, BenchmarkDetail, BenchmarkSummary, Doc, EXTRAS, Extra, LANGUAGES, LaneSpec, Page, priceHint, qs, styleOptions,
-  useAdminModels, useMethods,
+  useAdminModels, useDeleteLabPreset, useLabPresets, useMethods, useSaveLabPreset,
 } from '../api';
 import { fmt, t } from '../i18n';
 
 const MAX_LANES = 8;
-type LaneDraft = { draft: string; verify: string }; // verify: 'same' | 'none' | model id
+type PresetKey = 'classic' | 'harness' | 'versus' | 'strongCritic';
+type LaneDraft = { draft: string; verify: string; harness: boolean }; // verify: 'same' | 'none' | model id
 
-const toSpec = (l: LaneDraft): LaneSpec => ({ draft: l.draft, verify: l.verify === 'same' ? l.draft : l.verify === 'none' ? null : l.verify });
+const toSpec = (l: LaneDraft): LaneSpec => ({ draft: l.draft, verify: l.verify === 'same' ? l.draft : l.verify === 'none' ? null : l.verify, ...(l.harness && { harness: true }) });
 
 export default function AdminLab() {
   return (
@@ -53,6 +54,11 @@ function NewRun() {
   const [chapters, setChapters] = useState<number[] | null>(null); // null = all
   const [judge, setJudge] = useState('none');
   const [lanes, setLanes] = useState<LaneDraft[]>([]);
+  const saved = useLabPresets();
+  const savePreset = useSaveLabPreset();
+  const deletePreset = useDeleteLabPreset();
+  const [presetId, setPresetId] = useState('');
+  const [skipped, setSkipped] = useState(0);
 
   const chapterList = doc?.chapters ?? [];
   const selected = chapters ?? chapterList.map((_, i) => i);
@@ -60,7 +66,29 @@ function NewRun() {
   const words = allSelected ? doc?.words ?? 0 : selected.reduce((n, i) => n + (chapterList[i]?.words ?? 0), 0);
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const firstModel = models[0]?.id ?? '';
-  const shown: LaneDraft[] = lanes.length ? lanes : firstModel ? [{ draft: firstModel, verify: 'same' }] : [];
+  const shown: LaneDraft[] = lanes.length ? lanes : firstModel ? [{ draft: firstModel, verify: 'same', harness: false }] : [];
+  // Lane presets built from the enabled catalogue (first MAX_LANES lanes kept)
+  const lane = (draft: string, harness: boolean, verify = 'same'): LaneDraft => ({ draft, verify, harness });
+  const presets: [PresetKey, () => LaneDraft[], boolean][] = [
+    ['classic', () => models.map((m) => lane(m.id, false)), false],
+    ['harness', () => models.map((m) => lane(m.id, true)), false],
+    ['versus', () => models.slice(0, MAX_LANES / 2).flatMap((m) => [lane(m.id, false), lane(m.id, true)]), false],
+    ['strongCritic', () => models.filter((m) => m.id !== judge).map((m) => lane(m.id, true, judge)), true],
+  ];
+  const has = (id: string) => models.some((m) => m.id === id);
+  const applyPreset = (id: string) => {
+    setPresetId(id);
+    const p = saved.data?.find((x) => x.id === id);
+    if (!p) return setSkipped(0);
+    const ok = p.lanes.filter((l) => has(l.draft) && (l.verify === null || has(l.verify)));
+    setSkipped(p.lanes.length - ok.length);
+    setJudge(p.judge && has(p.judge) ? p.judge : 'none');
+    setLanes(ok.map((l) => ({ draft: l.draft, verify: l.verify === l.draft ? 'same' : l.verify ?? 'none', harness: !!l.harness })).slice(0, MAX_LANES));
+  };
+  const saveCurrent = () => {
+    const n = prompt(t('adminLab.presetName'), name.trim())?.trim();
+    if (n) savePreset.mutate({ name: n, ...(judge !== 'none' ? { judge } : {}), lanes: shown.map(toSpec) }, { onSuccess: (p) => { setPresetId(p.id); setSkipped(0); } });
+  };
   const setLane = (i: number, patch: Partial<LaneDraft>) => setLanes(shown.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const start = useMutation({
@@ -153,20 +181,41 @@ function NewRun() {
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-medium">{t('adminLab.lanes', { n: shown.length, max: MAX_LANES })}</h3>
-          <div className="flex gap-2 text-sm">
-            <button
-              type="button"
-              disabled={models.length === 0}
-              onClick={() => setLanes(models.slice(0, MAX_LANES).map((m) => ({ draft: m.id, verify: 'same' })))}
-              className="rounded border bg-white px-3 py-1 disabled:opacity-50"
-              title={models.length > MAX_LANES ? t('adminLab.onlyFirst', { max: MAX_LANES }) : undefined}
-            >
-              {t('adminLab.oneLanePerModel')}
+          <div className="flex w-full flex-wrap items-end gap-2 text-sm">
+            <div className="sm:w-1/2">
+              <Select label={t('adminLab.savedPreset')} value={presetId} onChange={applyPreset} options={[['', t('adminLab.noSavedPreset')], ...(saved.data ?? []).map((p) => [p.id, p.name] as const)]} />
+            </div>
+            <button type="button" disabled={savePreset.isPending || shown.length === 0} onClick={saveCurrent} className="rounded border bg-white px-3 py-2 disabled:opacity-50">
+              {t('adminLab.savePreset')}
             </button>
             <button
               type="button"
+              disabled={!presetId || deletePreset.isPending}
+              onClick={() => { const p = saved.data?.find((x) => x.id === presetId); if (p && confirm(t('adminLab.confirmDeletePreset', { name: p.name }))) deletePreset.mutate(p.id, { onSuccess: () => setPresetId('') }); }}
+              className="rounded border bg-white px-3 py-2 disabled:opacity-50"
+            >
+              {t('adminLab.deletePreset')}
+            </button>
+            {skipped > 0 && <p className="text-xs text-amber-700">{t('adminLab.presetSkipped', { n: skipped })}</p>}
+            {(savePreset.error || deletePreset.error) && <p className="text-xs text-red-600">{(savePreset.error ?? deletePreset.error)!.message}</p>}
+          </div>
+          <div className="flex gap-2 text-sm">
+            {presets.map(([key, make, needsJudge]) => (
+              <button
+                key={key}
+                type="button"
+                disabled={models.length === 0 || (needsJudge && judge === 'none')}
+                onClick={() => setLanes(make().slice(0, MAX_LANES))}
+                className="rounded border bg-white px-3 py-1 disabled:opacity-50"
+                title={t(`adminLab.preset.${key}Hint`, { max: MAX_LANES })}
+              >
+                {t(`adminLab.preset.${key}`)}
+              </button>
+            ))}
+            <button
+              type="button"
               disabled={shown.length >= MAX_LANES || !firstModel}
-              onClick={() => setLanes([...shown, { draft: firstModel, verify: 'same' }])}
+              onClick={() => setLanes([...shown, { draft: firstModel, verify: 'same', harness: false }])}
               className="rounded border bg-white px-3 py-1 disabled:opacity-50"
             >
               {t('adminLab.addLane')}
@@ -185,14 +234,17 @@ function NewRun() {
               </div>
               <div>
                 <Select
-                  label={t('adminLab.factCheckModel')}
+                  label={t(l.harness ? 'adminLab.criticModel' : 'adminLab.factCheckModel')}
                   value={l.verify}
                   onChange={(x) => setLane(i, { verify: x })}
-                  options={[['same', t('adminLab.sameAsDraft')], ['none', t('adminLab.noneSkip')], ...modelOpts]}
+                  options={[['same', t('adminLab.sameAsDraft')], ['none', t(l.harness ? 'adminLab.noneCritic' : 'adminLab.noneSkip')], ...modelOpts]}
                 />
                 <p className="mt-1 text-xs text-gray-600">
-                  {v ? <>{v.provider} · <span className="font-mono">{v.model}</span> · {priceHint(v)}</> : t('adminLab.noFactCheckPass')}
+                  {v ? <>{v.provider} · <span className="font-mono">{v.model}</span> · {priceHint(v)}</> : t(l.harness ? 'adminLab.criticUsesDraft' : 'adminLab.noFactCheckPass')}
                 </p>
+                <label className="mt-2 block text-sm">
+                  <input type="checkbox" checked={l.harness} onChange={(e) => setLane(i, { harness: e.target.checked })} /> {t('adminLab.harness')}
+                </label>
               </div>
               <button
                 type="button"
