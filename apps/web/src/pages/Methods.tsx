@@ -44,37 +44,37 @@ export default function Methods() {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{t('nav.methods')}</h1>
-        {!draft && <button onClick={() => setDraft({ id: null, name: '', instructions: '' })} className="rounded bg-black px-4 py-2 text-white">{t('methods.new')}</button>}
+        <h1 className="font-serif text-3xl font-semibold tracking-tight">{t('nav.methods')}</h1>
+        {!draft && <button onClick={() => setDraft({ id: null, name: '', instructions: '' })} className="rounded-full bg-ink px-5 py-3 text-white">{t('methods.new')}</button>}
       </div>
       {error && <p className="text-red-600">{error}</p>}
       {draft && (
         <form
-          className="space-y-3 rounded border bg-white p-4"
+          className="space-y-3 rounded-2xl border border-line bg-white p-4"
           onSubmit={(e) => { e.preventDefault(); save.mutate(draft); }}
         >
           <label className="block">
             {t('methods.name')}
-            <input required maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value.replace(/[\r\n]/g, ' ') })} className="mt-1 w-full rounded border bg-white p-2" />
+            <input required maxLength={80} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value.replace(/[\r\n]/g, ' ') })} className="mt-1 w-full rounded-xl border border-edge bg-white px-3 py-2.5" />
           </label>
           <Select label={t('methods.startFrom')} value="" onChange={startFrom} options={[['', t('methods.choosePreset')], ...PRESETS]} />
           <label className="block">
             {t('methods.instructions')}
-            <textarea required rows={12} maxLength={MAX} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} className="mt-1 w-full rounded border bg-white p-2 font-mono text-sm" />
+            <textarea required rows={12} maxLength={MAX} value={draft.instructions} onChange={(e) => setDraft({ ...draft, instructions: e.target.value })} className="mt-1 w-full rounded-xl border border-edge bg-white px-3 py-2.5 font-mono text-sm" />
           </label>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted">
             {draft.instructions.length}/{MAX} · {t('methods.hint')}
           </p>
           <div className="flex gap-3">
-            <button disabled={save.isPending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">{t('common.save')}</button>
+            <button disabled={save.isPending} className="rounded-full bg-ink px-5 py-3 text-white disabled:opacity-50">{t('common.save')}</button>
             <button type="button" onClick={() => setDraft(null)} className="underline">{t('common.cancel')}</button>
           </div>
         </form>
       )}
-      {methods.data?.length === 0 && !draft && <p className="text-gray-500">{t('methods.none')}</p>}
+      {methods.data?.length === 0 && !draft && <p className="text-muted">{t('methods.none')}</p>}
       <ul className="space-y-2">
         {methods.data?.map((m) => (
-          <li key={m.id} className="rounded border bg-white p-3">
+          <li key={m.id} className="rounded-2xl border border-line bg-white p-3">
             <div className="flex items-center justify-between gap-3">
               <strong>{m.name}</strong>
               <span className="flex gap-3 text-sm">
@@ -87,7 +87,7 @@ export default function Methods() {
                 </button>
               </span>
             </div>
-            <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-gray-600">{m.instructions}</p>
+            <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-muted">{m.instructions}</p>
           </li>
         ))}
       </ul>

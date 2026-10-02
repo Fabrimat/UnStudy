@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router';
 import { fmt, t } from './i18n';
 
 export type Preferences = { language?: string; lengthPercent?: number; method?: string; model?: string; fraction?: number /* legacy */ };
@@ -167,6 +168,16 @@ export function useAcceptLegal() {
     mutationFn: (documents: LegalRef[]) => api('/me/legal/accept', { method: 'POST', body: JSON.stringify({ documents }) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
   });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  return async () => {
+    await api('/auth/logout', { method: 'POST' });
+    qc.clear();
+    navigate('/login');
+  };
 }
 
 export function useDeleteAccount() {

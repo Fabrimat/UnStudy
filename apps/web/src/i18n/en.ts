@@ -1,7 +1,7 @@
 // English message catalog. Placeholders: {name}. Add a language = copy this file, translate, register in index.ts.
 export default {
   common: {
-    appName: 'Summarize',
+    appName: 'UnStudy',
     loading: 'Loading…',
     all: 'All',
     none: 'None',
@@ -51,11 +51,17 @@ export default {
     pagesCredits: '{pages} pages · {credits} credits',
   },
   nav: {
+    home: 'Home', docs: 'Docs', more: 'More',
     dashboard: 'Dashboard', documents: 'Documents', summaries: 'Summaries', credits: 'Credits', methods: 'Methods',
     settings: 'Settings', admin: 'Admin', logout: 'Log out',
   },
   login: {
-    title: 'Log in to Summarize',
+    signIn: 'Sign in',
+    intro: 'Use your Google account, or get a sign-in link by email. No password to remember.',
+    orEmail: 'or with email',
+    hero1: 'Study less,',
+    hero2: 'understand',
+    hero3: 'more.',
     sent: 'Check your inbox: we sent a login link to {email}. It is valid for 15 minutes.',
     email: 'Email',
     send: 'Send login link',
@@ -78,12 +84,15 @@ export default {
     loggingIn: 'Logging in…',
   },
   dashboard: {
+    dropTitle: 'Drop PDFs here',
+    addPdf: 'Add a PDF',
+    browse: 'Browse files',
     balance: 'Balance',
     summariesDone: 'Summaries done',
     creditsSpent: 'Credits spent',
     pagesSummarized: 'Pages summarized',
     inProgress: 'In progress',
-    drop: 'Drop PDFs here or click to choose (max 50 MB, 400 pages each)',
+    drop: 'Add one or more files (max 50 MB, 400 pages each), then pick a summary length for each.',
     recent: 'Recent documents',
     allDocuments: 'All documents',
     noDocuments: 'No documents yet.',
@@ -123,6 +132,10 @@ export default {
     downloadDocx: 'Download .docx',
     fileDeleted: 'The original file was deleted',
     regenerate: 'Regenerate with other options',
+    details: 'Details',
+    source: 'Source',
+    pages: '{n} pages',
+    cost: 'Cost',
     back: 'Back to dashboard',
   },
   jobs: {

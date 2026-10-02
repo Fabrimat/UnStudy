@@ -1,15 +1,33 @@
 @import "tailwindcss";
 
+@theme {
+  --color-ground: #F6F2EC;
+  --color-ink: #24173A;
+  --color-accent: #C93C20;
+  --color-alt: #EAE3F0;
+  --color-muted: #6A5F78;
+  --color-soft: #3F3550;
+  --color-line: #DDD4E4;
+  --color-edge: #A99BBD;
+  --font-sans: 'Figtree', 'Segoe UI', system-ui, sans-serif;
+  --font-serif: 'Newsreader', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --breakpoint-nav: 1180px;
+}
+
 /* Tailwind v4 preflight dropped the pointer cursor on buttons. */
 @layer base {
+  *, ::after, ::before { border-color: var(--color-line); }
   button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
 }
 
-.prose-summary { line-height: 1.6; }
-.prose-summary > * + * { margin-top: 0.75rem; }
-.prose-summary h1 { font-size: 1.5rem; font-weight: 700; }
-.prose-summary h2 { font-size: 1.25rem; font-weight: 600; margin-top: 1.25rem; }
-.prose-summary h3 { font-size: 1.1rem; font-weight: 600; }
-.prose-summary ul { list-style: disc; padding-left: 1.5rem; }
-.prose-summary ol { list-style: decimal; padding-left: 1.5rem; }
+.prose-summary { font-family: var(--font-serif); font-size: 1.125rem; line-height: 1.7; }
+.prose-summary > * + * { margin-top: 1rem; }
+.prose-summary h1, .prose-summary h2, .prose-summary h3 { font-family: var(--font-sans); color: var(--color-ink); letter-spacing: -0.02em; }
+.prose-summary h1 { font-size: 1.75rem; font-weight: 700; }
+.prose-summary h2 { font-size: 1.375rem; font-weight: 700; margin-top: 1.5rem; }
+.prose-summary h3 { font-size: 1.125rem; font-weight: 700; }
+.prose-summary ul { list-style: disc; padding-left: 1.4rem; }
+.prose-summary ol { list-style: decimal; padding-left: 1.4rem; }
+.prose-summary li + li { margin-top: 0.5rem; }
 .prose-summary strong { font-weight: 600; }

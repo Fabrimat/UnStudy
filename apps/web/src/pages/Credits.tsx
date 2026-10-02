@@ -49,7 +49,7 @@ export default function Credits() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('nav.credits')}</h1>
+      <h1 className="font-serif text-3xl font-semibold tracking-tight">{t('nav.credits')}</h1>
       {paid && <p className="rounded border border-green-300 bg-green-50 p-3 text-sm text-green-800">{t('credits.paid')}</p>}
       {me.data && me.data.balance < 0 && (
         <p className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">
@@ -61,11 +61,11 @@ export default function Credits() {
           <h2 className="font-medium">{t('credits.buyTitle')}</h2>
           <div className="grid gap-3 sm:grid-cols-3">
             {packs.data.packs.map((p) => (
-              <div key={p.id} className="space-y-1 rounded border bg-white p-4">
+              <div key={p.id} className="space-y-1 rounded-2xl border border-line bg-white p-4">
                 <div className="text-lg font-semibold">{t('common.credits', { n: p.credits })}</div>
                 <div>{formatPrice(p.amount, p.currency)}</div>
-                <div className="text-xs text-gray-500">{t('credits.perCredit', { price: formatPrice(p.amount / p.credits, p.currency) })}</div>
-                <button disabled={buy.isPending || buy.isSuccess} onClick={() => buy.mutate(p.id)} className="mt-2 rounded bg-black px-4 py-2 text-white disabled:opacity-50">
+                <div className="text-xs text-muted">{t('credits.perCredit', { price: formatPrice(p.amount / p.credits, p.currency) })}</div>
+                <button disabled={buy.isPending || buy.isSuccess} onClick={() => buy.mutate(p.id)} className="mt-2 rounded-full bg-ink px-5 py-3 text-white disabled:opacity-50">
                   {t('credits.buy')}
                 </button>
               </div>
@@ -74,13 +74,13 @@ export default function Credits() {
           {buy.isError && <p role="alert" className="text-sm text-red-600">{(buy.error as Error).message}</p>}
         </div>
       )}
-      <div className="overflow-x-auto rounded border bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="border-b bg-gray-50">
+          <thead className="border-b bg-alt">
             <tr>{[t('common.date'), t('credits.type'), t('credits.amount'), t('common.document')].map((h) => <th key={h} className="p-2 font-medium">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y">
-            {ledger.data?.items.length === 0 && <tr><td colSpan={4} className="p-3 text-gray-500">{t('credits.none')}</td></tr>}
+            {ledger.data?.items.length === 0 && <tr><td colSpan={4} className="p-3 text-muted">{t('credits.none')}</td></tr>}
             {ledger.data?.items.map((e) => (
               <tr key={e.id}>
                 <td className="p-2">{fmt.date(e.createdAt)}</td>

@@ -59,18 +59,18 @@ export default function Documents() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('nav.documents')}</h1>
+      <h1 className="font-serif text-3xl font-semibold tracking-tight">{t('nav.documents')}</h1>
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block">
           {t('documents.search')}
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('documents.fileName')} className="mt-1 w-full rounded border bg-white p-2" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('documents.fileName')} className="mt-1 w-full rounded-xl border border-edge bg-white px-3 py-2.5" />
         </label>
         <Select label={t('common.status')} value={status} onChange={(v) => set({ status: v, page: '' })} options={STATUSES} />
         <Select label={t('documents.sort')} value={sort} onChange={(v) => set({ sort: v, page: '' })} options={SORTS} />
       </div>
       {error && <p className="text-red-600">{error}</p>}
-      <ul className="divide-y rounded border bg-white">
-        {docs.data?.items.length === 0 && <li className="p-3 text-gray-500">{t('documents.none')}</li>}
+      <ul className="divide-y rounded-2xl border border-line bg-white">
+        {docs.data?.items.length === 0 && <li className="p-3 text-muted">{t('documents.none')}</li>}
         {docs.data?.items.map((d) => (
           <li key={d.id} className="flex items-center justify-between gap-4 p-3">
             {renaming?.id === d.id ? (
@@ -83,12 +83,12 @@ export default function Documents() {
                   if (e.key === 'Enter' && renaming.name.trim()) rename.mutate(renaming);
                   if (e.key === 'Escape') setRenaming(null);
                 }}
-                className="min-w-0 flex-1 rounded border bg-white p-1"
+                className="min-w-0 flex-1 rounded-xl border border-edge bg-white px-2 py-1.5"
               />
             ) : (
               <Link to={`/documents/${d.id}`} className="truncate underline">{d.filename}</Link>
             )}
-            <span className="hidden shrink-0 text-sm text-gray-600 sm:inline">{docStatus(d)}</span>
+            <span className="hidden shrink-0 text-sm text-muted sm:inline">{docStatus(d)}</span>
             <span className="flex shrink-0 gap-3 text-sm">
               <button className="underline" onClick={() => setRenaming({ id: d.id, name: d.filename })}>{t('documents.rename')}</button>
               <button

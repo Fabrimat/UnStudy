@@ -85,8 +85,8 @@ export default function DocumentPage() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">{d.filename}</h1>
-      <p className="text-sm text-gray-600">{t('document.meta', { pages: d.pages ?? '', words: d.words ?? '', parts: d.chapters?.length ?? '' })}</p>
+      <h1 className="font-serif text-3xl font-semibold tracking-tight">{d.filename}</h1>
+      <p className="text-sm text-muted">{t('document.meta', { pages: d.pages ?? '', words: d.words ?? '', parts: d.chapters?.length ?? '' })}</p>
       {d.jobs.length > 0 && (
         <div className="space-y-1">
           <h2 className="font-medium">{t('document.summaries')}</h2>
@@ -101,7 +101,7 @@ export default function DocumentPage() {
       )}
       {/* With past summaries the options stay behind a button; a first run or a regenerate opens them directly. */}
       {!(formOpen || from || d.jobs.length === 0) ? (
-        <button onClick={() => setFormOpen(true)} className="rounded bg-black px-4 py-2 text-white">{t('document.newSummary')}</button>
+        <button onClick={() => setFormOpen(true)} className="rounded-full bg-ink px-5 py-3 text-white">{t('document.newSummary')}</button>
       ) : (<>
       {d.jobs.length > 0 && <h2 className="font-medium">{t('document.newSummary')}</h2>}
       <div className="space-y-1 text-sm">
@@ -138,11 +138,11 @@ export default function DocumentPage() {
           value={bibliographicLine}
           onChange={(e) => setPicked({ ...picked, bibliographicLine: e.target.value })}
           placeholder={t('document.bibPlaceholder')}
-          className="mt-1 w-full rounded border bg-white p-2"
+          className="mt-1 w-full rounded-xl border border-edge bg-white px-3 py-2.5"
         />
       </label>
       <p>{t('document.cost')} <strong>{t('common.credits', { n: cost })}</strong> · {t('document.balance', { n: me.data?.balance ?? '' })}</p>
-      <button disabled={start.isPending || selected.length === 0} onClick={() => start.mutate()} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50">
+      <button disabled={start.isPending || selected.length === 0} onClick={() => start.mutate()} className="rounded-full bg-ink px-5 py-3 text-white disabled:opacity-50">
         {t('document.start')}
       </button>
       {start.error && <p className="text-red-600">{errorText(start.error)}</p>}

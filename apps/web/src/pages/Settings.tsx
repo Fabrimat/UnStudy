@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import Select from '../Select';
 import LengthPicker from '../LengthPicker';
-import { api, LANGUAGES, lengthOf, modelOptions, Preferences, styleOptions, useDeleteAccount, useMe, useMethods, useModels } from '../api';
+import { api, LANGUAGES, lengthOf, modelOptions, Preferences, styleOptions, useDeleteAccount, useLogout, useMe, useMethods, useModels } from '../api';
 import { t } from '../i18n';
 
 export default function Settings() {
@@ -17,6 +17,7 @@ export default function Settings() {
   });
   const navigate = useNavigate();
   const del = useDeleteAccount();
+  const logout = useLogout();
   const [confirm, setConfirm] = useState('');
   const prefs = me.data?.preferences ?? {};
   const options = styleOptions(methods.data);
@@ -28,8 +29,8 @@ export default function Settings() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('nav.settings')}</h1>
-      <p className="text-sm text-gray-600">{t('settings.defaults')}</p>
+      <h1 className="font-serif text-3xl font-semibold tracking-tight">{t('nav.settings')}</h1>
+      <p className="text-sm text-muted">{t('settings.defaults')}</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <Select label={t('common.language')} value={prefs.language ?? 'auto'} onChange={(language) => save.mutate({ language })} options={LANGUAGES} />
         <Select label={t('common.style')} value={method} onChange={(m) => save.mutate({ method: m })} options={options} />
@@ -38,12 +39,21 @@ export default function Settings() {
       <LengthPicker value={lengthOf(prefs)} onChange={(lengthPercent) => save.mutate({ lengthPercent, fraction: null })} />
       {save.isSuccess && <p className="text-green-700">{t('settings.saved')}</p>}
       {save.error && <p className="text-red-600">{save.error.message}</p>}
-      <div className="space-y-2 rounded border border-red-300 p-4">
+      <div className="rounded-2xl border border-line bg-white p-4 nav:hidden">
+        <h2 className="font-semibold">{t('nav.more')}</h2>
+        <ul className="mt-1 divide-y">
+          {[['/methods', t('nav.methods')], ...(me.data?.role === 'admin' ? [['/admin', t('nav.admin')]] : [])].map(([to, text]) => (
+            <li key={to}><Link to={to} className="block py-3 underline underline-offset-4">{text}</Link></li>
+          ))}
+          <li className="sm:hidden"><button onClick={logout} className="py-3 underline underline-offset-4">{t('nav.logout')}</button></li>
+        </ul>
+      </div>
+      <div className="space-y-2 rounded-2xl border border-red-300 bg-white p-4">
         <h2 className="font-semibold text-red-700">{t('settings.deleteTitle')}</h2>
-        <p className="text-sm text-gray-600">{t('settings.deleteBody')}</p>
+        <p className="text-sm text-muted">{t('settings.deleteBody')}</p>
         <input className="w-full rounded border p-2" aria-label={t('settings.deleteConfirm')} placeholder={t('settings.deleteConfirm')} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         <button
-          className="rounded bg-red-600 px-3 py-1 text-white disabled:opacity-50"
+          className="rounded-full bg-red-600 px-4 py-2.5 text-white disabled:opacity-50"
           disabled={del.isPending || !me.data || confirm.trim().toLowerCase() !== me.data.email.toLowerCase()}
           onClick={() => del.mutate(confirm, { onSuccess: () => navigate('/login') })}
         >

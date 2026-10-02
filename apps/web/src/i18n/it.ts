@@ -4,7 +4,7 @@ import type { DeepStrings } from './index';
 
 const it: DeepStrings<typeof en> = {
   common: {
-    appName: 'Summarize',
+    appName: 'UnStudy',
     loading: 'Caricamento…',
     all: 'Tutti',
     none: 'Nessuno',
@@ -54,11 +54,17 @@ const it: DeepStrings<typeof en> = {
     pagesCredits: '{pages} pagine · {credits} crediti',
   },
   nav: {
+    home: 'Home', docs: 'Doc', more: 'Altro',
     dashboard: 'Dashboard', documents: 'Documenti', summaries: 'Riassunti', credits: 'Crediti', methods: 'Metodi',
     settings: 'Impostazioni', admin: 'Admin', logout: 'Esci',
   },
   login: {
-    title: 'Accedi a Summarize',
+    signIn: 'Accedi',
+    intro: 'Usa il tuo account Google, oppure ricevi un link di accesso via email. Nessuna password da ricordare.',
+    orEmail: 'oppure con email',
+    hero1: 'Studia meno,',
+    hero2: 'capisci',
+    hero3: 'di più.',
     sent: 'Controlla la posta: ti abbiamo inviato un link di accesso a {email}. È valido per 15 minuti.',
     email: 'Email',
     send: 'Invia link di accesso',
@@ -81,12 +87,15 @@ const it: DeepStrings<typeof en> = {
     loggingIn: 'Accesso in corso…',
   },
   dashboard: {
+    dropTitle: 'Trascina qui i PDF',
+    addPdf: 'Aggiungi un PDF',
+    browse: 'Sfoglia i file',
     balance: 'Saldo',
     summariesDone: 'Riassunti completati',
     creditsSpent: 'Crediti spesi',
     pagesSummarized: 'Pagine riassunte',
     inProgress: 'In corso',
-    drop: 'Trascina qui i PDF o clicca per sceglierli (max 50 MB, 400 pagine ciascuno)',
+    drop: 'Aggiungi uno o più file (max 50 MB, 400 pagine ciascuno), poi scegli la lunghezza del riassunto per ciascuno.',
     recent: 'Documenti recenti',
     allDocuments: 'Tutti i documenti',
     noDocuments: 'Ancora nessun documento.',
@@ -126,6 +135,10 @@ const it: DeepStrings<typeof en> = {
     downloadDocx: 'Scarica .docx',
     fileDeleted: 'Il file originale è stato eliminato',
     regenerate: 'Rigenera con altre opzioni',
+    details: 'Dettagli',
+    source: 'Fonte',
+    pages: '{n} pagine',
+    cost: 'Costo',
     back: 'Torna alla dashboard',
   },
   jobs: {

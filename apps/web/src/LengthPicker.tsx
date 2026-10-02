@@ -8,7 +8,7 @@ export default function LengthPicker({ value, onChange, words }: { value: number
       <div className="mt-1 flex items-center gap-2">
         <input type="range" min={5} max={50} step={1} value={value} onChange={(e) => onChange(Number(e.target.value))} className="flex-1" />
         {QUICK_LENGTHS.map(([v, label]) => (
-          <button key={v} type="button" onClick={() => onChange(v)} className={`rounded border px-2 py-1 text-sm ${value === v ? 'bg-black text-white' : 'bg-white'}`}>
+          <button key={v} type="button" onClick={() => onChange(v)} className={`rounded-full border border-line px-3 py-2 text-sm ${value === v ? 'bg-ink text-white' : 'bg-white'}`}>
             {label}
           </button>
         ))}

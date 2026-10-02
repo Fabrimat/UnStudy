@@ -41,19 +41,19 @@ export default function Jobs() {
 
   return (
     <section className="space-y-4">
-      <h1 className="text-xl font-semibold">{t('nav.summaries')}</h1>
+      <h1 className="font-serif text-3xl font-semibold tracking-tight">{t('nav.summaries')}</h1>
       <div className="grid gap-3 sm:grid-cols-2">
         <Select label={t('common.status')} value={status} onChange={(v) => set({ status: v, page: '' })} options={STATUSES} />
         <Select label={t('common.style')} value={method} onChange={(v) => set({ method: v, page: '' })} options={styleOptions(methods.data, [['', t('jobs.allStyles')]])} />
       </div>
       {error && <p className="text-red-600">{error}</p>}
-      <div className="overflow-x-auto rounded border bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="border-b bg-gray-50">
+          <thead className="border-b bg-alt">
             <tr>{[t('common.document'), t('common.date'), t('common.style'), t('jobs.colLength'), t('common.language'), t('common.status'), t('nav.credits'), ''].map((h) => <th key={h} className="p-2 font-medium">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y">
-            {jobs.data?.items.length === 0 && <tr><td colSpan={8} className="p-3 text-gray-500">{t('jobs.none')}</td></tr>}
+            {jobs.data?.items.length === 0 && <tr><td colSpan={8} className="p-3 text-muted">{t('jobs.none')}</td></tr>}
             {jobs.data?.items.map((j) => (
               <tr key={j.id}>
                 <td className="max-w-48 truncate p-2"><Link to={`/jobs/${j.id}`} className="underline">{j.document.filename}</Link></td>

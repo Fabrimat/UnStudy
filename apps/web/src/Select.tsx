@@ -3,7 +3,7 @@ export default function Select<T extends string | number>(props: { label: string
     <label className="block">
       {props.label}
       <select
-        className="mt-1 w-full rounded border bg-white p-2"
+        className="mt-1 w-full rounded-xl border border-edge bg-white px-3 py-2.5"
         value={props.value}
         onChange={(e) => props.onChange((typeof props.value === 'number' ? Number(e.target.value) : e.target.value) as T)}
       >

@@ -1,13 +1,12 @@
-import { locale, locales, setLocale } from './i18n';
+import { locale, locales, setLocale, t } from './i18n';
 
 export default function LangSwitch() {
   return (
-    <span className="space-x-2">
-      {locales.map((l) => (
-        <button key={l} type="button" disabled={l === locale} onClick={() => setLocale(l)} className={l === locale ? 'font-semibold' : 'underline'}>
-          {l.toUpperCase()}
-        </button>
-      ))}
-    </span>
+    <label className="flex items-center gap-2">
+      {t('common.language')}
+      <select value={locale} onChange={(e) => setLocale(e.target.value as typeof locale)} className="h-11 rounded-full border border-line bg-white px-3.5 text-sm text-ink">
+        {locales.map((l) => <option key={l} value={l}>{new Intl.DisplayNames([l], { type: 'language' }).of(l)}</option>)}
+      </select>
+    </label>
   );
 }

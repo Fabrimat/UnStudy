@@ -9,10 +9,12 @@ const KINDS = ['terms', 'privacy'] as const;
 
 export function LegalLinks() {
   return (
-    <span className="space-x-3" aria-label={t('legal.footerLabel')}>
-      {KINDS.map((k) => <Link key={k} to={`/${k}`} className="underline">{t(`legal.${k}`)}</Link>)}
+    <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
+      <span className="flex gap-5" aria-label={t('legal.footerLabel')}>
+        {KINDS.map((k) => <Link key={k} to={`/${k}`} className="py-3 underline underline-offset-4">{t(`legal.${k}`)}</Link>)}
+      </span>
       <LangSwitch />
-    </span>
+    </div>
   );
 }
 
@@ -20,11 +22,11 @@ export function LegalLinks() {
 function LegalText({ kind }: { kind: LegalKind }) {
   const doc = useLegal(kind);
   if (doc.isPending) return <p>{t('common.loading')}</p>;
-  if (doc.error) return <p className="text-gray-500">{doc.error instanceof ApiError && doc.error.status === 404 ? t('legal.notPublished') : doc.error.message}</p>;
+  if (doc.error) return <p className="text-muted">{doc.error instanceof ApiError && doc.error.status === 404 ? t('legal.notPublished') : doc.error.message}</p>;
   return (
     <>
-      <p className="text-xs text-gray-500">{t('legal.version', { version: doc.data.version, date: fmt.date(doc.data.createdAt) })}</p>
-      <div className="prose-summary rounded border bg-white p-4"><Markdown skipHtml disallowedElements={['img']}>{doc.data.body}</Markdown></div>
+      <p className="text-xs text-muted">{t('legal.version', { version: doc.data.version, date: fmt.date(doc.data.createdAt) })}</p>
+      <div className="prose-summary rounded-3xl bg-white p-5"><Markdown skipHtml disallowedElements={['img']}>{doc.data.body}</Markdown></div>
     </>
   );
 }
@@ -33,7 +35,7 @@ function LegalText({ kind }: { kind: LegalKind }) {
 export function LegalPage({ kind }: { kind: LegalKind }) {
   return (
     <main className="mx-auto max-w-3xl space-y-4 p-6">
-      <h1 className="text-2xl font-semibold">{t(`legal.${kind}`)}</h1>
+      <h1 className="font-serif text-3xl font-semibold">{t(`legal.${kind}`)}</h1>
       <LegalText kind={kind} />
       <p className="text-sm"><Link to="/" className="underline">{t('common.appName')}</Link></p>
     </main>
@@ -53,11 +55,11 @@ export default function Accept() {
   const key = (d: LegalRef) => `${d.kind}:${d.version}`;
   return (
     <main className="mx-auto max-w-3xl space-y-6 p-6">
-      <h1 className="text-2xl font-semibold">{t('legal.acceptTitle')}</h1>
+      <h1 className="font-serif text-3xl font-semibold">{t('legal.acceptTitle')}</h1>
       <p>{t('legal.acceptIntro')}</p>
       {pending.map((d) => (
         <section key={key(d)} className="space-y-2">
-          <h2 className="text-lg font-semibold">{t(`legal.${d.kind}`)}</h2>
+          <h2 className="font-serif text-xl font-semibold">{t(`legal.${d.kind}`)}</h2>
           <LegalText kind={d.kind} />
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={checked.includes(key(d))} onChange={(e) => setChecked(e.target.checked ? [...checked, key(d)] : checked.filter((k) => k !== key(d)))} />
@@ -66,7 +68,7 @@ export default function Accept() {
         </section>
       ))}
       <button
-        className="rounded bg-black px-4 py-2 text-white disabled:opacity-50"
+        className="rounded-full bg-ink px-5 py-3 text-white disabled:opacity-50"
         disabled={accept.isPending || pending.some((d) => !checked.includes(key(d)))}
         onClick={() => accept.mutate(pending, { onSuccess: () => navigate(back, { replace: true }) })}
       >
